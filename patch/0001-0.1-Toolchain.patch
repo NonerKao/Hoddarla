@@ -1,0 +1,318 @@
+From a1e2721a45058d39b769c217b215a4cb38022d68 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Tue, 17 Aug 2021 21:28:37 +0800
+Subject: [PATCH 01/16] 0.1 Toolchain
+
+---
+ src/cmd/dist/build.go                |  2 ++
+ src/cmd/internal/objabi/head.go      |  5 +++++
+ src/go/build/syslist.go              |  2 +-
+ src/internal/goos/zgoos_aix.go       |  1 +
+ src/internal/goos/zgoos_android.go   |  1 +
+ src/internal/goos/zgoos_darwin.go    |  1 +
+ src/internal/goos/zgoos_dragonfly.go |  1 +
+ src/internal/goos/zgoos_freebsd.go   |  1 +
+ src/internal/goos/zgoos_hurd.go      |  1 +
+ src/internal/goos/zgoos_illumos.go   |  1 +
+ src/internal/goos/zgoos_ios.go       |  1 +
+ src/internal/goos/zgoos_js.go        |  1 +
+ src/internal/goos/zgoos_linux.go     |  1 +
+ src/internal/goos/zgoos_netbsd.go    |  1 +
+ src/internal/goos/zgoos_openbsd.go   |  1 +
+ src/internal/goos/zgoos_opensbi.go   | 27 +++++++++++++++++++++++++++
+ src/internal/goos/zgoos_plan9.go     |  1 +
+ src/internal/goos/zgoos_solaris.go   |  1 +
+ src/internal/goos/zgoos_windows.go   |  1 +
+ src/internal/goos/zgoos_zos.go       |  1 +
+ 20 files changed, 51 insertions(+), 1 deletion(-)
+ create mode 100644 src/internal/goos/zgoos_opensbi.go
+
+diff --git a/src/cmd/dist/build.go b/src/cmd/dist/build.go
+index 33a329e48b..ca08e474d3 100644
+--- a/src/cmd/dist/build.go
++++ b/src/cmd/dist/build.go
+@@ -89,6 +89,7 @@ var okgoos = []string{
+ 	"nacl", // keep;
+ 	"netbsd",
+ 	"openbsd",
++	"opensbi",
+ 	"plan9",
+ 	"windows",
+ 	"aix",
+@@ -1591,6 +1592,7 @@ var cgoEnabled = map[string]bool{
+ 	"openbsd/arm":     true,
+ 	"openbsd/arm64":   true,
+ 	"openbsd/mips64":  true,
++	"opensbi/riscv64": false,
+ 	"plan9/386":       false,
+ 	"plan9/amd64":     false,
+ 	"plan9/arm":       false,
+diff --git a/src/cmd/internal/objabi/head.go b/src/cmd/internal/objabi/head.go
+index 48ff292307..1b7b3d78c7 100644
+--- a/src/cmd/internal/objabi/head.go
++++ b/src/cmd/internal/objabi/head.go
+@@ -44,6 +44,7 @@ const (
+ 	Hlinux
+ 	Hnetbsd
+ 	Hopenbsd
++	Hopensbi
+ 	Hplan9
+ 	Hsolaris
+ 	Hwindows
+@@ -68,6 +69,8 @@ func (h *HeadType) Set(s string) error {
+ 		*h = Hnetbsd
+ 	case "openbsd":
+ 		*h = Hopenbsd
++	case "opensbi":
++		*h = Hopensbi
+ 	case "plan9":
+ 		*h = Hplan9
+ 	case "illumos", "solaris":
+@@ -98,6 +101,8 @@ func (h *HeadType) String() string {
+ 		return "netbsd"
+ 	case Hopenbsd:
+ 		return "openbsd"
++	case Hopensbi:
++		return "opensbi"
+ 	case Hplan9:
+ 		return "plan9"
+ 	case Hsolaris:
+diff --git a/src/go/build/syslist.go b/src/go/build/syslist.go
+index 60ac5511bd..b10b20cdc4 100644
+--- a/src/go/build/syslist.go
++++ b/src/go/build/syslist.go
+@@ -7,5 +7,5 @@ package build
+ // List of past, present, and future known GOOS and GOARCH values.
+ // Do not remove from this list, as these are used for go/build filename matching.
+ 
+-const goosList = "aix android darwin dragonfly freebsd hurd illumos ios js linux nacl netbsd openbsd plan9 solaris windows zos "
++const goosList = "aix android darwin dragonfly freebsd hurd illumos ios js linux nacl netbsd openbsd opensbi plan9 solaris windows zos "
+ const goarchList = "386 amd64 amd64p32 arm armbe arm64 arm64be ppc64 ppc64le loong64 mips mipsle mips64 mips64le mips64p32 mips64p32le ppc riscv riscv64 s390 s390x sparc sparc64 wasm "
+diff --git a/src/internal/goos/zgoos_aix.go b/src/internal/goos/zgoos_aix.go
+index 063e698b82..068483e3e2 100644
+--- a/src/internal/goos/zgoos_aix.go
++++ b/src/internal/goos/zgoos_aix.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_android.go b/src/internal/goos/zgoos_android.go
+index e9e4864978..702073176c 100644
+--- a/src/internal/goos/zgoos_android.go
++++ b/src/internal/goos/zgoos_android.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_darwin.go b/src/internal/goos/zgoos_darwin.go
+index 309d6a2717..c867b30e4f 100644
+--- a/src/internal/goos/zgoos_darwin.go
++++ b/src/internal/goos/zgoos_darwin.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_dragonfly.go b/src/internal/goos/zgoos_dragonfly.go
+index 4e8711b94c..9cdb85d547 100644
+--- a/src/internal/goos/zgoos_dragonfly.go
++++ b/src/internal/goos/zgoos_dragonfly.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_freebsd.go b/src/internal/goos/zgoos_freebsd.go
+index f312bd1608..08a620ff55 100644
+--- a/src/internal/goos/zgoos_freebsd.go
++++ b/src/internal/goos/zgoos_freebsd.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_hurd.go b/src/internal/goos/zgoos_hurd.go
+index 0f0dd28b81..1c13e48d0e 100644
+--- a/src/internal/goos/zgoos_hurd.go
++++ b/src/internal/goos/zgoos_hurd.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_illumos.go b/src/internal/goos/zgoos_illumos.go
+index 17e7c53a40..6939306519 100644
+--- a/src/internal/goos/zgoos_illumos.go
++++ b/src/internal/goos/zgoos_illumos.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_ios.go b/src/internal/goos/zgoos_ios.go
+index e4745ca413..2d43b34905 100644
+--- a/src/internal/goos/zgoos_ios.go
++++ b/src/internal/goos/zgoos_ios.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_js.go b/src/internal/goos/zgoos_js.go
+index bd2417e9ce..54009d5e9e 100644
+--- a/src/internal/goos/zgoos_js.go
++++ b/src/internal/goos/zgoos_js.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_linux.go b/src/internal/goos/zgoos_linux.go
+index 476702f442..84884a8e66 100644
+--- a/src/internal/goos/zgoos_linux.go
++++ b/src/internal/goos/zgoos_linux.go
+@@ -20,6 +20,7 @@ const IsLinux = 1
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_netbsd.go b/src/internal/goos/zgoos_netbsd.go
+index 97b7564bab..46c5667703 100644
+--- a/src/internal/goos/zgoos_netbsd.go
++++ b/src/internal/goos/zgoos_netbsd.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 1
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_openbsd.go b/src/internal/goos/zgoos_openbsd.go
+index 384a96480d..8c9b47f876 100644
+--- a/src/internal/goos/zgoos_openbsd.go
++++ b/src/internal/goos/zgoos_openbsd.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 1
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_opensbi.go b/src/internal/goos/zgoos_opensbi.go
+new file mode 100644
+index 0000000000..2febb75959
+--- /dev/null
++++ b/src/internal/goos/zgoos_opensbi.go
+@@ -0,0 +1,27 @@
++// Code generated by gengoos.go using 'go generate'. DO NOT EDIT.
++
++//go:build opensbi
++// +build opensbi
++
++package goos
++
++const GOOS = `opensbi`
++
++const IsAix = 0
++const IsAndroid = 0
++const IsDarwin = 0
++const IsDragonfly = 0
++const IsFreebsd = 0
++const IsHurd = 0
++const IsIllumos = 0
++const IsIos = 0
++const IsJs = 0
++const IsLinux = 0
++const IsNacl = 0
++const IsNetbsd = 0
++const IsOpenbsd = 0
++const IsOpensbi = 1
++const IsPlan9 = 0
++const IsSolaris = 0
++const IsWindows = 0
++const IsZos = 0
+diff --git a/src/internal/goos/zgoos_plan9.go b/src/internal/goos/zgoos_plan9.go
+index fcc279a79e..860f93a39f 100644
+--- a/src/internal/goos/zgoos_plan9.go
++++ b/src/internal/goos/zgoos_plan9.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 1
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_solaris.go b/src/internal/goos/zgoos_solaris.go
+index 3f366cf710..869297f53a 100644
+--- a/src/internal/goos/zgoos_solaris.go
++++ b/src/internal/goos/zgoos_solaris.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 1
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_windows.go b/src/internal/goos/zgoos_windows.go
+index dfa55339d3..a81cc848a5 100644
+--- a/src/internal/goos/zgoos_windows.go
++++ b/src/internal/goos/zgoos_windows.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 1
+diff --git a/src/internal/goos/zgoos_zos.go b/src/internal/goos/zgoos_zos.go
+index 714f24963a..f01bf5e435 100644
+--- a/src/internal/goos/zgoos_zos.go
++++ b/src/internal/goos/zgoos_zos.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+-- 
+2.32.0
+

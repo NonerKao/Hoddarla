@@ -1,0 +1,3 @@
+#!/bin/bash
+
+export PATH=$(pwd)/toolchain/bin:$(pwd)/go/bin:$PATH
