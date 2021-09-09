@@ -1,0 +1,3 @@
+[submodule "misc/opensbi"]
+	path = misc/opensbi
+	url = ssh://git@github.com/riscv/opensbi.git

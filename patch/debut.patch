@@ -1,0 +1,3772 @@
+From da8ea18e743de29fbf250d143e7039103564f797 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Tue, 17 Aug 2021 21:28:37 +0800
+Subject: [PATCH] 0.1 Toolchain
+
+0.2 Executable
+
+0.3 Verify ethanol image
+
+0.4 Support CSR and Privileged Instruction
+
+1.0 Debugging with CONSOLE_PUT_CHAR SBI
+
+1.2 Experimentally initialize stack pointer
+
+1.3 Initialize BSS
+
+2.0 Setup page table entries for a page
+
+2.1 Start RISC-V MMU
+
+2.2 Debug Virtual Memory
+
+2.3 Parse DTB
+
+2.4 Implement sysAlloc, sysReserve and sysMap
+
+2.5 Arch-depedent memory constant
+
+M.0 Command-line argument and environment variable
+
+3.0 Implement basic timer interrupt
+
+3.3 Implement context
+---
+ src/cmd/dist/build.go                |   2 +
+ src/cmd/internal/obj/riscv/obj.go    |  12 +-
+ src/cmd/internal/objabi/head.go      |   5 +
+ src/cmd/link/internal/ld/asmb.go     |   1 +
+ src/cmd/link/internal/ld/sym.go      |   2 +-
+ src/cmd/link/internal/riscv64/obj.go |   2 +-
+ src/go/build/syslist.go              |   2 +-
+ src/internal/goos/zgoos_aix.go       |   1 +
+ src/internal/goos/zgoos_android.go   |   1 +
+ src/internal/goos/zgoos_darwin.go    |   1 +
+ src/internal/goos/zgoos_dragonfly.go |   1 +
+ src/internal/goos/zgoos_freebsd.go   |   1 +
+ src/internal/goos/zgoos_hurd.go      |   1 +
+ src/internal/goos/zgoos_illumos.go   |   1 +
+ src/internal/goos/zgoos_ios.go       |   1 +
+ src/internal/goos/zgoos_js.go        |   1 +
+ src/internal/goos/zgoos_linux.go     |   1 +
+ src/internal/goos/zgoos_netbsd.go    |   1 +
+ src/internal/goos/zgoos_openbsd.go   |   1 +
+ src/internal/goos/zgoos_opensbi.go   |  27 ++
+ src/internal/goos/zgoos_plan9.go     |   1 +
+ src/internal/goos/zgoos_solaris.go   |   1 +
+ src/internal/goos/zgoos_windows.go   |   1 +
+ src/internal/goos/zgoos_zos.go       |   1 +
+ src/internal/poll/fd_opensbi.go      |  82 +++++
+ src/os/dir_opensbi.go                |  16 +
+ src/os/exec_opensbi.go               |  78 +++++
+ src/os/executable_opensbi.go         |  12 +
+ src/os/file_opensbi.go               | 188 ++++++++++
+ src/os/path_opensbi.go               |  19 +
+ src/os/rawconn.go                    |   4 +-
+ src/os/stat_opensbi.go               |  26 ++
+ src/os/sys_opensbi.go                |   9 +
+ src/runtime/cputicks.go              |   4 +-
+ src/runtime/env_posix.go             |   4 +-
+ src/runtime/ethanol/README           |  45 +++
+ src/runtime/ethanol/config.h         |  11 +
+ src/runtime/ethanol/csr.h            |  21 ++
+ src/runtime/ethanol/early_mm.go      |  74 ++++
+ src/runtime/ethanol/fdt.go           | 137 ++++++++
+ src/runtime/ethanol/misc.s           |  72 ++++
+ src/runtime/ethanol/trap.go          |   7 +
+ src/runtime/ethanol/trap.s           |  53 +++
+ src/runtime/lock_opensbi.go          | 172 ++++++++++
+ src/runtime/malloc.go                |   8 +-
+ src/runtime/mem_opensbi.go           | 141 ++++++++
+ src/runtime/netpoll_stub.go          |   4 +-
+ src/runtime/os_opensbi.go            | 219 ++++++++++++
+ src/runtime/rt0_opensbi_riscv64.s    | 218 ++++++++++++
+ src/runtime/stubs2.go                |   4 +-
+ src/runtime/stubs3.go                |   4 +-
+ src/runtime/sys_opensbi_riscv64.s    | 111 ++++++
+ src/runtime/timestub2.go             |   3 +-
+ src/syscall/dir_opensbi.go           |  33 ++
+ src/syscall/dirent.go                |   4 +-
+ src/syscall/env_opensbi.go           |  26 ++
+ src/syscall/fs_opensbi.go            | 131 +++++++
+ src/syscall/syscall_opensbi.go       | 364 ++++++++++++++++++++
+ src/syscall/tables_opensbi.go        | 495 +++++++++++++++++++++++++++
+ src/time/sys_opensbi.go              |  55 +++
+ src/time/zoneinfo_opensbi.go         | 142 ++++++++
+ 61 files changed, 3041 insertions(+), 24 deletions(-)
+ create mode 100644 src/internal/goos/zgoos_opensbi.go
+ create mode 100644 src/internal/poll/fd_opensbi.go
+ create mode 100644 src/os/dir_opensbi.go
+ create mode 100644 src/os/exec_opensbi.go
+ create mode 100644 src/os/executable_opensbi.go
+ create mode 100644 src/os/file_opensbi.go
+ create mode 100644 src/os/path_opensbi.go
+ create mode 100644 src/os/stat_opensbi.go
+ create mode 100644 src/os/sys_opensbi.go
+ create mode 100644 src/runtime/ethanol/README
+ create mode 100644 src/runtime/ethanol/config.h
+ create mode 100644 src/runtime/ethanol/csr.h
+ create mode 100644 src/runtime/ethanol/early_mm.go
+ create mode 100644 src/runtime/ethanol/fdt.go
+ create mode 100644 src/runtime/ethanol/misc.s
+ create mode 100644 src/runtime/ethanol/trap.go
+ create mode 100644 src/runtime/ethanol/trap.s
+ create mode 100644 src/runtime/lock_opensbi.go
+ create mode 100644 src/runtime/mem_opensbi.go
+ create mode 100644 src/runtime/os_opensbi.go
+ create mode 100644 src/runtime/rt0_opensbi_riscv64.s
+ create mode 100644 src/runtime/sys_opensbi_riscv64.s
+ create mode 100644 src/syscall/dir_opensbi.go
+ create mode 100644 src/syscall/env_opensbi.go
+ create mode 100644 src/syscall/fs_opensbi.go
+ create mode 100644 src/syscall/syscall_opensbi.go
+ create mode 100644 src/syscall/tables_opensbi.go
+ create mode 100644 src/time/sys_opensbi.go
+ create mode 100644 src/time/zoneinfo_opensbi.go
+
+diff --git a/src/cmd/dist/build.go b/src/cmd/dist/build.go
+index 33a329e48b..ca08e474d3 100644
+--- a/src/cmd/dist/build.go
++++ b/src/cmd/dist/build.go
+@@ -89,6 +89,7 @@ var okgoos = []string{
+ 	"nacl", // keep;
+ 	"netbsd",
+ 	"openbsd",
++	"opensbi",
+ 	"plan9",
+ 	"windows",
+ 	"aix",
+@@ -1591,6 +1592,7 @@ var cgoEnabled = map[string]bool{
+ 	"openbsd/arm":     true,
+ 	"openbsd/arm64":   true,
+ 	"openbsd/mips64":  true,
++	"opensbi/riscv64": false,
+ 	"plan9/386":       false,
+ 	"plan9/amd64":     false,
+ 	"plan9/arm":       false,
+diff --git a/src/cmd/internal/obj/riscv/obj.go b/src/cmd/internal/obj/riscv/obj.go
+index a305edab4b..ec2b799d1a 100644
+--- a/src/cmd/internal/obj/riscv/obj.go
++++ b/src/cmd/internal/obj/riscv/obj.go
+@@ -1682,8 +1682,14 @@ var encodings = [ALAST & obj.AMask]encoding{
+ 	// Privileged ISA
+ 
+ 	// 3.2.1: Environment Call and Breakpoint
+-	AECALL & obj.AMask:  iIEncoding,
+-	AEBREAK & obj.AMask: iIEncoding,
++	AECALL & obj.AMask:     iIEncoding,
++	AEBREAK & obj.AMask:    iIEncoding,
++	AWFI & obj.AMask:       iIEncoding,
++	ASRET & obj.AMask:      iIEncoding,
++	ACSRRW & obj.AMask:     iIEncoding,
++	ACSRRS & obj.AMask:     iIEncoding,
++	ACSRRC & obj.AMask:     iIEncoding,
++	ASFENCEVMA & obj.AMask: iIEncoding,
+ 
+ 	// Escape hatch
+ 	AWORD & obj.AMask: rawEncoding,
+@@ -1857,7 +1863,7 @@ func instructionsForProg(p *obj.Prog) []*instruction {
+ 		ins.funct7 = 2
+ 		ins.rd, ins.rs1, ins.rs2 = uint32(p.RegTo2), uint32(p.To.Reg), uint32(p.From.Reg)
+ 
+-	case AECALL, AEBREAK, ARDCYCLE, ARDTIME, ARDINSTRET:
++	case ASRET, AWFI, ASFENCEVMA, AECALL, AEBREAK, ARDCYCLE, ARDTIME, ARDINSTRET:
+ 		insEnc := encode(p.As)
+ 		if p.To.Type == obj.TYPE_NONE {
+ 			ins.rd = REG_ZERO
+diff --git a/src/cmd/internal/objabi/head.go b/src/cmd/internal/objabi/head.go
+index 48ff292307..1b7b3d78c7 100644
+--- a/src/cmd/internal/objabi/head.go
++++ b/src/cmd/internal/objabi/head.go
+@@ -44,6 +44,7 @@ const (
+ 	Hlinux
+ 	Hnetbsd
+ 	Hopenbsd
++	Hopensbi
+ 	Hplan9
+ 	Hsolaris
+ 	Hwindows
+@@ -68,6 +69,8 @@ func (h *HeadType) Set(s string) error {
+ 		*h = Hnetbsd
+ 	case "openbsd":
+ 		*h = Hopenbsd
++	case "opensbi":
++		*h = Hopensbi
+ 	case "plan9":
+ 		*h = Hplan9
+ 	case "illumos", "solaris":
+@@ -98,6 +101,8 @@ func (h *HeadType) String() string {
+ 		return "netbsd"
+ 	case Hopenbsd:
+ 		return "openbsd"
++	case Hopensbi:
++		return "opensbi"
+ 	case Hplan9:
+ 		return "plan9"
+ 	case Hsolaris:
+diff --git a/src/cmd/link/internal/ld/asmb.go b/src/cmd/link/internal/ld/asmb.go
+index d6ecb2895b..5ecab642bc 100644
+--- a/src/cmd/link/internal/ld/asmb.go
++++ b/src/cmd/link/internal/ld/asmb.go
+@@ -102,6 +102,7 @@ func asmb2(ctxt *Link) {
+ 		objabi.Hlinux,
+ 		objabi.Hnetbsd,
+ 		objabi.Hopenbsd,
++		objabi.Hopensbi,
+ 		objabi.Hsolaris:
+ 		asmbElf(ctxt)
+ 	}
+diff --git a/src/cmd/link/internal/ld/sym.go b/src/cmd/link/internal/ld/sym.go
+index 72639962e2..9f35b2a38c 100644
+--- a/src/cmd/link/internal/ld/sym.go
++++ b/src/cmd/link/internal/ld/sym.go
+@@ -75,7 +75,7 @@ func (ctxt *Link) computeTLSOffset() {
+ 	default:
+ 		log.Fatalf("unknown thread-local storage offset for %v", ctxt.HeadType)
+ 
+-	case objabi.Hplan9, objabi.Hwindows, objabi.Hjs, objabi.Haix:
++	case objabi.Hplan9, objabi.Hwindows, objabi.Hjs, objabi.Haix, objabi.Hopensbi:
+ 		break
+ 
+ 	case objabi.Hlinux,
+diff --git a/src/cmd/link/internal/riscv64/obj.go b/src/cmd/link/internal/riscv64/obj.go
+index 917324d922..2bd68d0051 100644
+--- a/src/cmd/link/internal/riscv64/obj.go
++++ b/src/cmd/link/internal/riscv64/obj.go
+@@ -45,7 +45,7 @@ func Init() (*sys.Arch, ld.Arch) {
+ 
+ func archinit(ctxt *ld.Link) {
+ 	switch ctxt.HeadType {
+-	case objabi.Hlinux:
++	case objabi.Hlinux, objabi.Hopensbi:
+ 		ld.Elfinit(ctxt)
+ 		ld.HEADR = ld.ELFRESERVE
+ 		if *ld.FlagTextAddr == -1 {
+diff --git a/src/go/build/syslist.go b/src/go/build/syslist.go
+index 60ac5511bd..b10b20cdc4 100644
+--- a/src/go/build/syslist.go
++++ b/src/go/build/syslist.go
+@@ -7,5 +7,5 @@ package build
+ // List of past, present, and future known GOOS and GOARCH values.
+ // Do not remove from this list, as these are used for go/build filename matching.
+ 
+-const goosList = "aix android darwin dragonfly freebsd hurd illumos ios js linux nacl netbsd openbsd plan9 solaris windows zos "
++const goosList = "aix android darwin dragonfly freebsd hurd illumos ios js linux nacl netbsd openbsd opensbi plan9 solaris windows zos "
+ const goarchList = "386 amd64 amd64p32 arm armbe arm64 arm64be ppc64 ppc64le loong64 mips mipsle mips64 mips64le mips64p32 mips64p32le ppc riscv riscv64 s390 s390x sparc sparc64 wasm "
+diff --git a/src/internal/goos/zgoos_aix.go b/src/internal/goos/zgoos_aix.go
+index 063e698b82..068483e3e2 100644
+--- a/src/internal/goos/zgoos_aix.go
++++ b/src/internal/goos/zgoos_aix.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_android.go b/src/internal/goos/zgoos_android.go
+index e9e4864978..702073176c 100644
+--- a/src/internal/goos/zgoos_android.go
++++ b/src/internal/goos/zgoos_android.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_darwin.go b/src/internal/goos/zgoos_darwin.go
+index 309d6a2717..c867b30e4f 100644
+--- a/src/internal/goos/zgoos_darwin.go
++++ b/src/internal/goos/zgoos_darwin.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_dragonfly.go b/src/internal/goos/zgoos_dragonfly.go
+index 4e8711b94c..9cdb85d547 100644
+--- a/src/internal/goos/zgoos_dragonfly.go
++++ b/src/internal/goos/zgoos_dragonfly.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_freebsd.go b/src/internal/goos/zgoos_freebsd.go
+index f312bd1608..08a620ff55 100644
+--- a/src/internal/goos/zgoos_freebsd.go
++++ b/src/internal/goos/zgoos_freebsd.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_hurd.go b/src/internal/goos/zgoos_hurd.go
+index 0f0dd28b81..1c13e48d0e 100644
+--- a/src/internal/goos/zgoos_hurd.go
++++ b/src/internal/goos/zgoos_hurd.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_illumos.go b/src/internal/goos/zgoos_illumos.go
+index 17e7c53a40..6939306519 100644
+--- a/src/internal/goos/zgoos_illumos.go
++++ b/src/internal/goos/zgoos_illumos.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_ios.go b/src/internal/goos/zgoos_ios.go
+index e4745ca413..2d43b34905 100644
+--- a/src/internal/goos/zgoos_ios.go
++++ b/src/internal/goos/zgoos_ios.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_js.go b/src/internal/goos/zgoos_js.go
+index bd2417e9ce..54009d5e9e 100644
+--- a/src/internal/goos/zgoos_js.go
++++ b/src/internal/goos/zgoos_js.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_linux.go b/src/internal/goos/zgoos_linux.go
+index 476702f442..84884a8e66 100644
+--- a/src/internal/goos/zgoos_linux.go
++++ b/src/internal/goos/zgoos_linux.go
+@@ -20,6 +20,7 @@ const IsLinux = 1
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_netbsd.go b/src/internal/goos/zgoos_netbsd.go
+index 97b7564bab..46c5667703 100644
+--- a/src/internal/goos/zgoos_netbsd.go
++++ b/src/internal/goos/zgoos_netbsd.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 1
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_openbsd.go b/src/internal/goos/zgoos_openbsd.go
+index 384a96480d..8c9b47f876 100644
+--- a/src/internal/goos/zgoos_openbsd.go
++++ b/src/internal/goos/zgoos_openbsd.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 1
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_opensbi.go b/src/internal/goos/zgoos_opensbi.go
+new file mode 100644
+index 0000000000..2febb75959
+--- /dev/null
++++ b/src/internal/goos/zgoos_opensbi.go
+@@ -0,0 +1,27 @@
++// Code generated by gengoos.go using 'go generate'. DO NOT EDIT.
++
++//go:build opensbi
++// +build opensbi
++
++package goos
++
++const GOOS = `opensbi`
++
++const IsAix = 0
++const IsAndroid = 0
++const IsDarwin = 0
++const IsDragonfly = 0
++const IsFreebsd = 0
++const IsHurd = 0
++const IsIllumos = 0
++const IsIos = 0
++const IsJs = 0
++const IsLinux = 0
++const IsNacl = 0
++const IsNetbsd = 0
++const IsOpenbsd = 0
++const IsOpensbi = 1
++const IsPlan9 = 0
++const IsSolaris = 0
++const IsWindows = 0
++const IsZos = 0
+diff --git a/src/internal/goos/zgoos_plan9.go b/src/internal/goos/zgoos_plan9.go
+index fcc279a79e..860f93a39f 100644
+--- a/src/internal/goos/zgoos_plan9.go
++++ b/src/internal/goos/zgoos_plan9.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 1
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_solaris.go b/src/internal/goos/zgoos_solaris.go
+index 3f366cf710..869297f53a 100644
+--- a/src/internal/goos/zgoos_solaris.go
++++ b/src/internal/goos/zgoos_solaris.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 1
+ const IsWindows = 0
+diff --git a/src/internal/goos/zgoos_windows.go b/src/internal/goos/zgoos_windows.go
+index dfa55339d3..a81cc848a5 100644
+--- a/src/internal/goos/zgoos_windows.go
++++ b/src/internal/goos/zgoos_windows.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 1
+diff --git a/src/internal/goos/zgoos_zos.go b/src/internal/goos/zgoos_zos.go
+index 714f24963a..f01bf5e435 100644
+--- a/src/internal/goos/zgoos_zos.go
++++ b/src/internal/goos/zgoos_zos.go
+@@ -20,6 +20,7 @@ const IsLinux = 0
+ const IsNacl = 0
+ const IsNetbsd = 0
+ const IsOpenbsd = 0
++const IsOpensbi = 0
+ const IsPlan9 = 0
+ const IsSolaris = 0
+ const IsWindows = 0
+diff --git a/src/internal/poll/fd_opensbi.go b/src/internal/poll/fd_opensbi.go
+new file mode 100644
+index 0000000000..367081f26d
+--- /dev/null
++++ b/src/internal/poll/fd_opensbi.go
+@@ -0,0 +1,82 @@
++// Copyright 2009 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package poll
++
++import (
++	"errors"
++	"time"
++)
++
++type FD struct {
++	fdmu    fdMutex
++	Destroy func()
++	isFile  bool
++}
++
++func (fd *FD) destroy() error {
++	return nil
++}
++
++func (fd *FD) Close() error {
++	return nil
++}
++
++func (fd *FD) Read(fn func([]byte) (int, error), b []byte) (int, error) {
++	return 0, nil
++}
++
++func (fd *FD) Write(fn func([]byte) (int, error), b []byte) (int, error) {
++	return 0, nil
++}
++
++func (fd *FD) SetDeadline(t time.Time) error {
++	return nil
++}
++
++// SetReadDeadline sets the read deadline associated with fd.
++func (fd *FD) SetReadDeadline(t time.Time) error {
++	return nil
++}
++
++// SetWriteDeadline sets the write deadline associated with fd.
++func (fd *FD) SetWriteDeadline(t time.Time) error {
++	return nil
++}
++
++func setDeadlineImpl(fd *FD, t time.Time, mode int) error {
++	return nil
++}
++
++func (fd *FD) ReadLock() error {
++	return nil
++}
++
++func (fd *FD) ReadUnlock() {
++	return
++}
++
++func isHangup(err error) bool {
++	return false
++}
++
++func isInterrupted(err error) bool {
++	return false
++}
++
++func IsPollDescriptor(fd uintptr) bool {
++	return false
++}
++
++func (fd *FD) RawControl(f func(uintptr)) error {
++	return errors.New("not implemented")
++}
++
++func (fd *FD) RawRead(f func(uintptr) bool) error {
++	return errors.New("not implemented")
++}
++
++func (fd *FD) RawWrite(f func(uintptr) bool) error {
++	return errors.New("not implemented")
++}
+diff --git a/src/os/dir_opensbi.go b/src/os/dir_opensbi.go
+new file mode 100644
+index 0000000000..94a7d013a2
+--- /dev/null
++++ b/src/os/dir_opensbi.go
+@@ -0,0 +1,16 @@
++// Copyright 2009 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package os
++
++func (file *File) readdir(n int, mode readdirMode) (names []string, dirents []DirEntry, infos []FileInfo, err error) {
++	return nil, nil, nil, nil
++}
++
++type dirEntry struct{}
++
++func (de dirEntry) Name() string            { return "" }
++func (de dirEntry) IsDir() bool             { return false }
++func (de dirEntry) Type() FileMode          { return 0 }
++func (de dirEntry) Info() (FileInfo, error) { return nil, nil }
+diff --git a/src/os/exec_opensbi.go b/src/os/exec_opensbi.go
+new file mode 100644
+index 0000000000..305c79058b
+--- /dev/null
++++ b/src/os/exec_opensbi.go
+@@ -0,0 +1,78 @@
++// Copyright 2009 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package os
++
++import (
++	"time"
++)
++
++func startProcess(name string, argv []string, attr *ProcAttr) (p *Process, err error) {
++	return nil, nil
++}
++
++func (p *Process) writeProcFile(file string, data string) error {
++	return nil
++}
++
++func (p *Process) signal(sig Signal) error {
++	return nil
++}
++
++func (p *Process) kill() error {
++	return nil
++}
++
++func (p *Process) wait() (ps *ProcessState, err error) {
++	return nil, nil
++}
++
++func (p *Process) release() error {
++	return nil
++}
++
++func findProcess(pid int) (p *Process, err error) {
++	return nil, nil
++}
++
++type ProcessState struct {
++	pid int // The process's id.
++}
++
++// Pid returns the process id of the exited process.
++func (p *ProcessState) Pid() int {
++	return p.pid
++}
++
++func (p *ProcessState) exited() bool {
++	return true
++}
++
++func (p *ProcessState) success() bool {
++	return true
++}
++
++func (p *ProcessState) sys() interface{} {
++	return nil
++}
++
++func (p *ProcessState) sysUsage() interface{} {
++	return nil
++}
++
++func (p *ProcessState) userTime() time.Duration {
++	return 0 * time.Millisecond
++}
++
++func (p *ProcessState) systemTime() time.Duration {
++	return 0 * time.Millisecond
++}
++
++func (p *ProcessState) String() string {
++	return ""
++}
++
++func (p *ProcessState) ExitCode() int {
++	return 0
++}
+diff --git a/src/os/executable_opensbi.go b/src/os/executable_opensbi.go
+new file mode 100644
+index 0000000000..90bbf10d30
+--- /dev/null
++++ b/src/os/executable_opensbi.go
+@@ -0,0 +1,12 @@
++// Copyright 2016 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi
++// +build opensbi
++
++package os
++
++func executable() (string, error) {
++	return "", nil
++}
+diff --git a/src/os/file_opensbi.go b/src/os/file_opensbi.go
+new file mode 100644
+index 0000000000..2c9a194ec1
+--- /dev/null
++++ b/src/os/file_opensbi.go
+@@ -0,0 +1,188 @@
++// Copyright 2011 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package os
++
++import (
++	"time"
++)
++
++func fixLongPath(path string) string {
++	return path
++}
++
++type file struct {
++	fd         int
++	name       string
++	dirinfo    *dirInfo // nil unless directory being read
++	appendMode bool     // whether file is opened for appending
++}
++
++func (f *File) Fd() uintptr {
++	return 0
++}
++
++func NewFile(fd uintptr, name string) *File {
++	return nil
++}
++
++type dirInfo struct {
++	buf  [1024]byte // buffer for directory I/O
++	nbuf int        // length of buf; return value from Read
++	bufp int        // location of next record in buf.
++}
++
++func epipecheck(file *File, e error) {
++}
++
++func syscallMode(i FileMode) (o uint32) {
++	return 0
++}
++
++func openFileNolog(name string, flag int, perm FileMode) (*File, error) {
++	return nil, nil
++}
++
++func (f *File) Close() error {
++	return nil
++}
++
++func (file *file) close() error {
++	return nil
++}
++
++func (f *File) Stat() (FileInfo, error) {
++	return nil, nil
++}
++
++func (f *File) Truncate(size int64) error {
++	return nil
++}
++
++func (f *File) chmod(mode FileMode) error {
++	return nil
++}
++
++func (f *File) Sync() error {
++	return nil
++}
++
++func (f *File) read(b []byte) (n int, err error) {
++	return 0, nil
++}
++
++func (f *File) pread(b []byte, off int64) (n int, err error) {
++	return 0, nil
++}
++
++func (f *File) write(b []byte) (n int, err error) {
++	return 0, nil
++}
++
++func (f *File) pwrite(b []byte, off int64) (n int, err error) {
++	return 0, nil
++}
++
++func (f *File) seek(offset int64, whence int) (ret int64, err error) {
++	return 0, nil
++}
++
++func Truncate(name string, size int64) error {
++	return nil
++}
++
++func Remove(name string) error {
++	return nil
++}
++
++func hasPrefix(s, prefix string) bool {
++	return false
++}
++
++func rename(oldname, newname string) error {
++	return nil
++}
++
++func chmod(name string, mode FileMode) error {
++	return nil
++}
++
++func Chtimes(name string, atime time.Time, mtime time.Time) error {
++	return nil
++}
++
++func Pipe() (r *File, w *File, err error) {
++	return nil, nil, nil
++}
++
++func Link(oldname, newname string) error {
++	return nil
++}
++
++func Symlink(oldname, newname string) error {
++	return nil
++}
++
++func Readlink(name string) (string, error) {
++	return "", nil
++}
++
++func Chown(name string, uid, gid int) error {
++	return nil
++}
++
++func Lchown(name string, uid, gid int) error {
++	return nil
++}
++
++func (f *File) Chown(uid, gid int) error {
++	return nil
++}
++
++func tempDir() string {
++	return ""
++
++}
++
++func (f *File) Chdir() error {
++	return nil
++}
++
++func (f *File) setDeadline(time.Time) error {
++	return nil
++}
++
++func (f *File) setReadDeadline(time.Time) error {
++	return nil
++}
++
++func (f *File) setWriteDeadline(time.Time) error {
++	return nil
++}
++
++func (f *File) checkValid(op string) error {
++	return nil
++}
++
++type rawConn struct{}
++
++func (c *rawConn) Control(f func(uintptr)) error {
++	return nil
++}
++
++func (c *rawConn) Read(f func(uintptr) bool) error {
++	return nil
++}
++
++func (c *rawConn) Write(f func(uintptr) bool) error {
++	return nil
++}
++
++func newRawConn(file *File) (*rawConn, error) {
++	return nil, nil
++}
++
++func ignoringEINTR(fn func() error) error {
++	return fn()
++}
+diff --git a/src/os/path_opensbi.go b/src/os/path_opensbi.go
+new file mode 100644
+index 0000000000..a54b4b98f1
+--- /dev/null
++++ b/src/os/path_opensbi.go
+@@ -0,0 +1,19 @@
++// Copyright 2011 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package os
++
++const (
++	PathSeparator     = '/'    // OS-specific path separator
++	PathListSeparator = '\000' // OS-specific path list separator
++)
++
++// IsPathSeparator reports whether c is a directory separator character.
++func IsPathSeparator(c uint8) bool {
++	return PathSeparator == c
++}
++
++func fixRootDirectory(p string) string {
++	return p
++}
+diff --git a/src/os/rawconn.go b/src/os/rawconn.go
+index ffc598b061..c65ed12523 100644
+--- a/src/os/rawconn.go
++++ b/src/os/rawconn.go
+@@ -2,8 +2,8 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build !plan9
+-// +build !plan9
++//go:build !plan9 && !opensbi
++// +build !plan9,!opensbi
+ 
+ package os
+ 
+diff --git a/src/os/stat_opensbi.go b/src/os/stat_opensbi.go
+new file mode 100644
+index 0000000000..b42ed897dd
+--- /dev/null
++++ b/src/os/stat_opensbi.go
+@@ -0,0 +1,26 @@
++// Copyright 2011 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package os
++
++import (
++	"syscall"
++)
++
++func fileInfoFromStat(d *syscall.Dir) *fileStat {
++	return nil
++}
++
++// arg is an open *File or a path string.
++func dirstat(arg interface{}) (*syscall.Dir, error) {
++	return nil, nil
++}
++
++func statNolog(name string) (FileInfo, error) {
++	return nil, nil
++}
++
++func lstatNolog(name string) (FileInfo, error) {
++	return nil, nil
++}
+diff --git a/src/os/sys_opensbi.go b/src/os/sys_opensbi.go
+new file mode 100644
+index 0000000000..0942d71301
+--- /dev/null
++++ b/src/os/sys_opensbi.go
+@@ -0,0 +1,9 @@
++// Copyright 2011 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package os
++
++func hostname() (name string, err error) {
++	return "", nil
++}
+diff --git a/src/runtime/cputicks.go b/src/runtime/cputicks.go
+index 7c926f4a2b..5228778bb3 100644
+--- a/src/runtime/cputicks.go
++++ b/src/runtime/cputicks.go
+@@ -2,8 +2,8 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build !arm && !arm64 && !mips64 && !mips64le && !mips && !mipsle && !wasm
+-// +build !arm,!arm64,!mips64,!mips64le,!mips,!mipsle,!wasm
++//go:build !arm && !arm64 && !mips64 && !mips64le && !mips && !mipsle && !opensbi && !wasm
++// +build !arm,!arm64,!mips64,!mips64le,!mips,!mipsle,!opensbi, !wasm
+ 
+ package runtime
+ 
+diff --git a/src/runtime/env_posix.go b/src/runtime/env_posix.go
+index 95517b2a95..2bd3769855 100644
+--- a/src/runtime/env_posix.go
++++ b/src/runtime/env_posix.go
+@@ -2,8 +2,8 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build aix || darwin || dragonfly || freebsd || (js && wasm) || linux || netbsd || openbsd || solaris || windows || plan9
+-// +build aix darwin dragonfly freebsd js,wasm linux netbsd openbsd solaris windows plan9
++//go:build aix || darwin || dragonfly || freebsd || (js && wasm) || linux || netbsd || openbsd || opensbi || solaris || windows || plan9
++// +build aix darwin dragonfly freebsd js,wasm linux netbsd openbsd opensbi solaris windows plan9
+ 
+ package runtime
+ 
+diff --git a/src/runtime/ethanol/README b/src/runtime/ethanol/README
+new file mode 100644
+index 0000000000..a5a5296309
+--- /dev/null
++++ b/src/runtime/ethanol/README
+@@ -0,0 +1,45 @@
++* Virtual Memory Map
++
+++---------------------+---------------------+---------------------+
++| Start Address       | Size                | Area Description    |
+++---------------------+---------------------+---------------------+
++| ffff ffc0 0000 0000 | 8KB                 | ^early stack        |
+++---------------------+---------------------+---------------------+
++| ffff ffc0 0000 2000 | ~ 2MB               | Ethanol base        |
+++---------------------+---------------------+---------------------+
++| runtime.end         | FDT size (~ 8KB )   | var fdt string      |
+++---------------------+---------------------+---------------------+
++| ...                 | ...                 | ...                 |
+++---------------------+---------------------+---------------------+
++|                     | 16MB                | ^CPU 1 stack        |
+++---------------------+---------------------+---------------------+
++|                     | 16MB                | ^CPU 0 stack        |
+++---------------------+---------------------+---------------------+
++| ffff ffff fec0 0000 | max(2MB,slotSize)   | slot map            |
++|          ~          |                     |                     |
++| ffff ffff ffc0 0000 |                     |                     |
+++---------------------+---------------------+---------------------+
++| ffff ffff fff0 0000 | 1MB                 | early page table    |
+++---------------------+---------------------+---------------------+
++
++* Physical Memory Map
++
+++---------------------+---------------------+---------------------+
++| Start Address       | Size                | Area Description    |
+++---------------------+---------------------+---------------------+
++| 80000000            | ~ 60KB              | OpenSBI             |
+++---------------------+---------------------+---------------------+
++| 80100000            |                     | hole                |
++|                     |                     | base page table     |
+++---------------------+---------------------+---------------------+
++| 80200000            | 8KB                 | goto jumper         |
++|                     |                     | args & envp         |
++|                     |                     | ^early stack        |
+++---------------------+---------------------+---------------------+
++| 80202000            | ~ 2MB               | Ethanol base        |
+++---------------------+---------------------+---------------------+
++| ...                 | ...                 | ...                 |
+++---------------------+---------------------+---------------------+
++| M                   | max(2MB,slotSize)   | slot map            |
++|                     |                     | max size = 18MB     |
+++---------------------+---------------------+---------------------+
+diff --git a/src/runtime/ethanol/config.h b/src/runtime/ethanol/config.h
+new file mode 100644
+index 0000000000..1f21232c3a
+--- /dev/null
++++ b/src/runtime/ethanol/config.h
+@@ -0,0 +1,11 @@
++// Copyright 2021 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++// Early memory map
++#define VA_START_HI32	$0xffffffc0
++#define VA_START_LO32	$0x00000000
++#define EARLY_PT_HI32	$0xffffffff
++#define EARLY_PT_LO32	$0xfff00000
++#define PAGE_TYPE_2M	$0x200000
++#define PAGE_TYPE_4K	$0x1000
+diff --git a/src/runtime/ethanol/csr.h b/src/runtime/ethanol/csr.h
+new file mode 100644
+index 0000000000..cf17f69f7c
+--- /dev/null
++++ b/src/runtime/ethanol/csr.h
+@@ -0,0 +1,21 @@
++// Copyright 2020 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++// CSR encoding
++#define CSR_SSTATUS     $0x100
++#define CSR_SIE		$0x104
++#define CSR_STVEC	$0x105
++#define CSR_SSCRATCH	$0x140
++#define CSR_SEPC	$0x141
++#define CSR_SCAUSE	$0x142
++#define CSR_STVAL	$0x143
++#define CSR_SIP		$0x144
++#define CSR_SATP	$0x180
++#define CSR_TIME	$-0x3ff //0xc01
++
++// SSTATUS encoding
++#define SSTATUS_SIE	$0x00000002
++
++// SIE & SIP encoding
++#define SIE_STI		$0x00000020
+diff --git a/src/runtime/ethanol/early_mm.go b/src/runtime/ethanol/early_mm.go
+new file mode 100644
+index 0000000000..55f9c059db
+--- /dev/null
++++ b/src/runtime/ethanol/early_mm.go
+@@ -0,0 +1,74 @@
++//go:build opensbi
++// +build opensbi
++
++package ethanol
++
++import "unsafe"
++
++// Some of these must agree with config.h
++const (
++	PAGE_TABLE_VA = 0xfffffffffff00000
++	PAGE_TABLE_PA = 0x80100000
++	PAGE_TYPE_2M  = 0x200000
++	PAGE_TYPE_4K  = 0x1000
++	PTE_XWRV      = 0xF
++	PTE_V         = 0x1
++)
++
++type pageType int
++
++var AddrOffset uintptr
++var loadAddr uintptr
++var linkAddr = uintptr(unsafe.Pointer(&AddrOffset))
++
++//go:nosplit
++func SFENCEVMA()
++
++func SetAddrOffset() {
++	loadAddr = uintptr(unsafe.Pointer(&AddrOffset))
++	AddrOffset = linkAddr - loadAddr
++}
++
++var PageTableRoot *[256][512]uintptr
++var NextPageTable uint
++
++//go:nosplit
++func MemoryMap(va, pa uintptr, pt pageType) {
++	vpn2 := (va & 0x0000007FC0000000) >> 30
++	vpn1 := (va & 0x000000003FE00000) >> 21
++	if (*PageTableRoot)[0][vpn2] == 0 {
++		pt2 := uintptr(NextPageTable*0x1000 + PAGE_TABLE_PA)
++		(*PageTableRoot)[0][vpn2] = pt2>>12<<10 | PTE_V
++		if pt == PAGE_TYPE_2M {
++			(*PageTableRoot)[NextPageTable][vpn1] = pa>>12<<10 | PTE_XWRV
++		} else {
++			pt1 := uintptr((NextPageTable+1)*0x1000 + PAGE_TABLE_PA)
++			(*PageTableRoot)[NextPageTable][vpn1] = pt1>>12<<10 | PTE_V
++			vpn0 := (va & 0x00000000001FF000) >> 12
++			(*PageTableRoot)[NextPageTable+1][vpn0] = pa>>12<<10 | PTE_XWRV
++			NextPageTable += 1
++		}
++		NextPageTable += 1
++		return
++	} else {
++		pt1 := ((*PageTableRoot)[0][vpn2]>>10<<12 - PAGE_TABLE_PA) / 0x1000
++		if (*PageTableRoot)[pt1][vpn1] == 0 {
++			if pt == PAGE_TYPE_2M {
++				(*PageTableRoot)[pt1][vpn1] = pa>>12<<10 | PTE_XWRV
++			} else {
++				pt0 := uintptr((NextPageTable+1)*0x1000 + PAGE_TABLE_PA)
++				(*PageTableRoot)[pt1][vpn1] = pt0>>12<<10 | PTE_V
++				vpn0 := (va & 0x00000000001FF000) >> 12
++				(*PageTableRoot)[NextPageTable+1][vpn0] = pa>>12<<10 | PTE_XWRV
++				NextPageTable += 1
++			}
++			return
++		} else if pt == PAGE_TYPE_4K {
++			pt0 := ((*PageTableRoot)[pt1][vpn1]>>10<<12 - PAGE_TABLE_PA) / 0x1000
++			vpn0 := (va & 0x00000000001FF000) >> 12
++			(*PageTableRoot)[pt0][vpn0] = pa>>12<<10 | PTE_XWRV
++			return
++		}
++	}
++	print("weird: ", unsafe.Pointer(va), " to ", unsafe.Pointer(pa), " of type ", pt, "\n")
++}
+diff --git a/src/runtime/ethanol/fdt.go b/src/runtime/ethanol/fdt.go
+new file mode 100644
+index 0000000000..126352af49
+--- /dev/null
++++ b/src/runtime/ethanol/fdt.go
+@@ -0,0 +1,137 @@
++//go:build opensbi
++// +build opensbi
++
++package ethanol
++
++const (
++	FDT_BEGIN_NODE = 1 + iota
++	FDT_END_NODE
++	FDT_PROP
++	FDT_NOP
++	FDT_END = 9
++)
++
++func memoryNotFound() (uint, uint) {
++	print("This FDT contains no node with attribute \"reg\"!\n")
++	print("Assuming 256MB Memory: 0x80000000 - 0x90000000\n")
++	return 0x80000000, 0x10000000
++}
++
++var fdt string
++
++// We don't have any advanced features yet, so
++// hardcoded to search for "memory" and "reg"
++func GetMemoryInfo() (uint, uint) {
++	nodeOffset := getWord(fdt, 8)
++	strOffset := getWord(fdt, 12)
++	// find "reg" directly
++	regStrOffset, found := getStrOffset(fdt, "reg", strOffset, getWord(fdt, 32))
++	if !found {
++		return memoryNotFound()
++	}
++
++	// TODO: abstract this better later.  Technically it is wrong.
++	getReg := false
++	for i := nodeOffset; i < nodeOffset+getWord(fdt, 36); i += 4 {
++		if getWord(fdt, i) == FDT_BEGIN_NODE {
++			i += 4
++			if fdtsubstr(fdt, "memory", i) {
++				for fdt[i] != 0 {
++					i++
++				}
++				i = i / 4 * 4
++				getReg = true
++			}
++		} else if getWord(fdt, i) == FDT_PROP && getReg {
++			if getWord(fdt, i+8) == regStrOffset {
++				return getWord(fdt, i+16), getWord(fdt, i+24)
++			}
++		}
++	}
++	return memoryNotFound()
++}
++
++func getStrOffset(fdt, s string, so, size uint) (uint, bool) {
++	for i := so; i < so+size; i++ {
++		if fdt[i] == 0 {
++			continue
++		}
++		if fdt[i] != s[0] {
++			for fdt[i+1] != 0 {
++				i++
++			}
++			continue
++		}
++		found := true
++		for j := uint(1); j < uint(len(s)); j++ {
++			if fdt[i+j] != s[j] {
++				found = false
++				break
++			}
++		}
++		if found {
++			return i - so, true
++		}
++	}
++	return 0, false
++}
++
++func getWord(fdt string, offset uint) uint {
++	var ret uint
++	for i := uint(0); i < 4; i++ {
++		ret += uint(fdt[offset+i]) << ((3 - i) * 8)
++	}
++	return ret
++}
++
++func fdtsubstr(fdt, s string, o uint) bool {
++	for i := uint(0); i < uint(len(s)); i++ {
++		if fdt[o+i] != s[i] {
++			return false
++		}
++	}
++	return true
++}
++
++func argsNotFound() int32 {
++	print("This FDT contains no arguments !\n")
++	return 0
++}
++
++func setArgv(s string, off uint) int32
++func GetArgc() int32 {
++	nodeOffset := getWord(fdt, 8)
++	strOffset := getWord(fdt, 12)
++	// find "bootargs" directly
++	regStrOffset, found := getStrOffset(fdt, "bootargs", strOffset, getWord(fdt, 32))
++	if !found {
++		return argsNotFound()
++	}
++
++	var l uint
++	var off uint
++	getReg := false
++	for i := nodeOffset; i < nodeOffset+getWord(fdt, 36); i += 4 {
++		if getWord(fdt, i) == FDT_BEGIN_NODE {
++			i += 4
++			if fdtsubstr(fdt, "chosen", i) {
++				for fdt[i] != 0 {
++					i++
++				}
++				i = i / 4 * 4
++				getReg = true
++			}
++		} else if getWord(fdt, i) == FDT_PROP && getReg {
++			if getWord(fdt, i+8) == regStrOffset {
++				l = getWord(fdt, i+4)
++				off = i + 12
++				break
++			}
++		}
++	}
++
++	if l > 1 {
++		return setArgv(fdt, off)
++	}
++	return argsNotFound()
++}
+diff --git a/src/runtime/ethanol/misc.s b/src/runtime/ethanol/misc.s
+new file mode 100644
+index 0000000000..51931a3610
+--- /dev/null
++++ b/src/runtime/ethanol/misc.s
+@@ -0,0 +1,72 @@
++// Copyright 2015 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi
++// +build opensbi
++
++#include "textflag.h"
++
++// func SFENCEVMA()
++TEXT runtime∕ethanol·SFENCEVMA(SB), NOSPLIT|NOFRAME, $0-0
++	SFENCEVMA
++	RET
++
++// func setArgv(s string, off uint) uint32
++TEXT runtime∕ethanol·setArgv(SB), NOSPLIT|NOFRAME, $0-28
++	MOV	s+0(FP), A0
++	MOV	off+16(FP), A1
++	ADD	A0, A1, A1
++
++	// get argv
++	MOV     $runtime·argv(SB), A0
++	MOV	0(A0), A0
++
++	MOV	$0, A2
++	MOV	$0x20, A3
++	MOV	$0x3d, A4
++setarg:
++	MOV	A1, 0(A0)
++	ADD	$8, A0, A0
++findnull:
++	MOVBU	0(A1), A5
++	BEQ	ZERO, A5, end
++	BEQ	A4, A5, env
++	BNE	A3, A5, skip
++	// if fdt[i] == ' '
++	MOVB	ZERO, 0(A1)
++	ADD	$1, A2, A2
++	ADD	$1, A1, A1
++	JMP	setarg
++skip:
++	// fdt[i] character is normal
++	ADD	$1, A1, A1
++	JMP	findnull
++
++	// if fdt[i] == '='
++env:
++	MOV	A2, A6
++	MOV	-8(A0), A2
++	MOV	ZERO, -8(A0)
++	MOV	A2, 0(A0)
++	ADD	$8, A0, A0
++	JMP	findnull2
++setenv:
++	MOV	A1, 0(A0)
++	ADD	$8, A0, A0
++findnull2:
++	MOVBU	0(A1), A5
++	BEQ	ZERO, A5, end
++	BNE	A3, A5, skip2
++	// if fdt[i] == ' '
++	MOVB	ZERO, 0(A1)
++	ADD	$1, A1, A1
++	JMP	setenv
++skip2:
++	// fdt[i] character is normal
++	ADD	$1, A1, A1
++	JMP	findnull2
++end:
++
++	MOVW	A6, ret+24(FP)
++	RET
+diff --git a/src/runtime/ethanol/trap.go b/src/runtime/ethanol/trap.go
+new file mode 100644
+index 0000000000..49fec7018c
+--- /dev/null
++++ b/src/runtime/ethanol/trap.go
+@@ -0,0 +1,7 @@
++package ethanol
++
++func SetSscratch(s uintptr)
++func TimerInterrupt(on bool)
++func Interrupt(on bool)
++func SetTimer()
++func SetStvec(f func())
+diff --git a/src/runtime/ethanol/trap.s b/src/runtime/ethanol/trap.s
+new file mode 100644
+index 0000000000..ebe35e7174
+--- /dev/null
++++ b/src/runtime/ethanol/trap.s
+@@ -0,0 +1,53 @@
++// Copyright 2015 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi
++// +build opensbi
++
++#include "textflag.h"
++#include "csr.h"
++
++// func TimerInterrupt(on bool)
++TEXT runtime∕ethanol·TimerInterrupt(SB), NOSPLIT|NOFRAME, $0-8
++	MOV	on+0(FP), A0
++	MOV	SIE_STI, A1
++	BEQ	A0, ZERO, clear 
++	CSRRS	CSR_SIE, A1, ZERO
++	RET
++clear:
++	CSRRC	CSR_SIE, A1, ZERO
++	RET
++
++// func Interrupt(on bool)
++TEXT runtime∕ethanol·Interrupt(SB), NOSPLIT|NOFRAME, $0-8
++	MOV	on+0(FP), A0
++	MOV	SSTATUS_SIE, A1
++	BEQ	A0, ZERO, clear
++	CSRRS	CSR_SSTATUS, A1, ZERO
++	RET
++clear:
++	CSRRC	CSR_SSTATUS, A1, ZERO
++	RET
++
++// func SetTimer()
++TEXT runtime∕ethanol·SetTimer(SB), NOSPLIT|NOFRAME, $0-0
++	CSRRS   CSR_TIME, ZERO, A0
++	ADD	$0x1000000, A0, A0
++	MOV     $0, A6
++	MOV     $0x54494D45, A7
++	ECALL
++	RET
++
++// func SetSscratch(s uintptr)
++TEXT runtime∕ethanol·SetSscratch(SB), NOSPLIT|NOFRAME, $0-8
++	MOV	s+0(FP), A0
++	CSRRW   CSR_SSCRATCH, A0, ZERO
++	RET
++
++// func SetStvec(f func())
++TEXT runtime∕ethanol·SetStvec(SB), NOSPLIT|NOFRAME, $0-8
++	MOV	f+0(FP), A0
++	MOV	0(A0), A0
++	CSRRW   CSR_STVEC, A0, ZERO
++	RET
+diff --git a/src/runtime/lock_opensbi.go b/src/runtime/lock_opensbi.go
+new file mode 100644
+index 0000000000..c6a3f929e1
+--- /dev/null
++++ b/src/runtime/lock_opensbi.go
+@@ -0,0 +1,172 @@
++// Copyright 2018 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi && riscv64
++// +build opensbi,riscv64
++
++package runtime
++
++import (
++	_ "unsafe"
++)
++
++// js/wasm has no support for threads yet. There is no preemption.
++
++const (
++	mutex_unlocked = 0
++	mutex_locked   = 1
++
++	note_cleared = 0
++	note_woken   = 1
++	note_timeout = 2
++
++	active_spin     = 4
++	active_spin_cnt = 30
++	passive_spin    = 1
++)
++
++func lock(l *mutex) {
++	lockWithRank(l, getLockRank(l))
++}
++
++func lock2(l *mutex) {
++	if l.key == mutex_locked {
++		// js/wasm is single-threaded so we should never
++		// observe this.
++		throw("self deadlock")
++	}
++	gp := getg()
++	if gp.m.locks < 0 {
++		throw("lock count")
++	}
++	gp.m.locks++
++	l.key = mutex_locked
++}
++
++func unlock(l *mutex) {
++	unlockWithRank(l)
++}
++
++func unlock2(l *mutex) {
++	if l.key == mutex_unlocked {
++		throw("unlock of unlocked lock")
++	}
++	gp := getg()
++	gp.m.locks--
++	if gp.m.locks < 0 {
++		throw("lock count")
++	}
++	l.key = mutex_unlocked
++}
++
++// One-time notifications.
++
++type noteWithTimeout struct {
++	gp       *g
++	deadline int64
++}
++
++var (
++	notes            = make(map[*note]*g)
++	notesWithTimeout = make(map[*note]noteWithTimeout)
++)
++
++func noteclear(n *note) {
++	n.key = note_cleared
++}
++
++func notewakeup(n *note) {
++}
++
++func notesleep(n *note) {
++}
++
++func notetsleep(n *note, ns int64) bool {
++	return false
++}
++
++// same as runtime·notetsleep, but called on user g (not g0)
++func notetsleepg(n *note, ns int64) bool {
++	return false
++}
++
++// checkTimeouts resumes goroutines that are waiting on a note which has reached its deadline.
++func checkTimeouts() {
++	now := nanotime()
++	for n, nt := range notesWithTimeout {
++		if n.key == note_cleared && now >= nt.deadline {
++			n.key = note_timeout
++			goready(nt.gp, 1)
++		}
++	}
++}
++
++// events is a stack of calls from JavaScript into Go.
++var events []*event
++
++type event struct {
++	// g was the active goroutine when the call from JavaScript occurred.
++	// It needs to be active when returning to JavaScript.
++	gp *g
++	// returned reports whether the event handler has returned.
++	// When all goroutines are idle and the event handler has returned,
++	// then g gets resumed and returns the execution to JavaScript.
++	returned bool
++}
++
++// The timeout event started by beforeIdle.
++var idleID int32
++
++// beforeIdle gets called by the scheduler if no goroutine is awake.
++// If we are not already handling an event, then we pause for an async event.
++// If an event handler returned, we resume it and it will pause the execution.
++// beforeIdle either returns the specific goroutine to schedule next or
++// indicates with otherReady that some goroutine became ready.
++func beforeIdle(now, pollUntil int64) (gp *g, otherReady bool) {
++	return nil, false
++}
++
++func handleAsyncEvent() {
++	pause(getcallersp() - 16)
++}
++
++// clearIdleID clears our record of the timeout started by beforeIdle.
++func clearIdleID() {
++}
++
++// pause sets SP to newsp and pauses the execution of Go's WebAssembly code until an event is triggered.
++func pause(newsp uintptr)
++
++// handleEvent gets invoked on a call from JavaScript into Go. It calls the event handler of the syscall/js package
++// and then parks the handler goroutine to allow other goroutines to run before giving execution back to JavaScript.
++// When no other goroutine is awake any more, beforeIdle resumes the handler goroutine. Now that the same goroutine
++// is running as was running when the call came in from JavaScript, execution can be safely passed back to JavaScript.
++func handleEvent() {
++	e := &event{
++		gp:       getg(),
++		returned: false,
++	}
++	events = append(events, e)
++
++	eventHandler()
++
++	clearIdleID()
++
++	// wait until all goroutines are idle
++	e.returned = true
++	gopark(nil, nil, waitReasonZero, traceEvNone, 1)
++
++	events[len(events)-1] = nil
++	events = events[:len(events)-1]
++
++	// return execution to JavaScript
++	pause(getcallersp() - 16)
++}
++
++var eventHandler func()
++
++//go:linkname setEventHandler syscall/js.setEventHandler
++func setEventHandler(fn func()) {
++	eventHandler = fn
++}
+diff --git a/src/runtime/malloc.go b/src/runtime/malloc.go
+index f8d5d48a28..347f767c50 100644
+--- a/src/runtime/malloc.go
++++ b/src/runtime/malloc.go
+@@ -209,7 +209,7 @@ const (
+ 	// arenaBaseOffset to offset into the top 4 GiB.
+ 	//
+ 	// WebAssembly currently has a limit of 4GB linear memory.
+-	heapAddrBits = (_64bit*(1-goarch.IsWasm)*(1-goos.IsIos*goarch.IsArm64))*48 + (1-_64bit+goarch.IsWasm)*(32-(goarch.IsMips+goarch.IsMipsle)) + 33*goos.IsIos*goarch.IsArm64
++	heapAddrBits = (_64bit*(1-goarch.IsWasm)*(1-goos.IsIos*goarch.IsArm64)*(1-goos.IsOpensbi))*48 + (1-_64bit+goarch.IsWasm)*(32-(goarch.IsMips+goarch.IsMipsle)) + 33*goos.IsIos*goarch.IsArm64 + 36*goos.IsOpensbi
+ 
+ 	// maxAlloc is the maximum size of an allocation. On 64-bit,
+ 	// it's theoretically possible to allocate 1<<heapAddrBits bytes. On
+@@ -305,7 +305,7 @@ const (
+ 	//
+ 	// On other platforms, the user address space is contiguous
+ 	// and starts at 0, so no offset is necessary.
+-	arenaBaseOffset = 0xffff800000000000*goarch.IsAmd64 + 0x0a00000000000000*goos.IsAix
++	arenaBaseOffset = 0xffff800000000000*goarch.IsAmd64 + 0x0a00000000000000*goos.IsAix + 0xffffffc000000000*goos.IsOpensbi
+ 	// A typed version of this constant that will make it into DWARF (for viewcore).
+ 	arenaBaseOffsetUintptr = uintptr(arenaBaseOffset)
+ 
+@@ -534,6 +534,8 @@ func mallocinit() {
+ 				p = uintptr(i)<<40 | uintptrMask&(0x0013<<28)
+ 			case GOARCH == "arm64":
+ 				p = uintptr(i)<<40 | uintptrMask&(0x0040<<32)
++			case GOOS == "opensbi":
++				p = uintptr(i)<<26 | uintptr(0xffffffcf04000000)
+ 			case GOOS == "aix":
+ 				if i == 0 {
+ 					// We don't use addresses directly after 0x0A00000000000000
+@@ -704,7 +706,7 @@ func (h *mheap) sysAlloc(n uintptr) (v unsafe.Pointer, size uintptr) {
+ 	}
+ 
+ 	// Check for bad pointers or pointers we can't use.
+-	{
++	if GOOS != "opensbi" {
+ 		var bad string
+ 		p := uintptr(v)
+ 		if p+size < p {
+diff --git a/src/runtime/mem_opensbi.go b/src/runtime/mem_opensbi.go
+new file mode 100644
+index 0000000000..7899991aea
+--- /dev/null
++++ b/src/runtime/mem_opensbi.go
+@@ -0,0 +1,141 @@
++// Copyright 2018 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi && riscv64
++// +build opensbi,riscv64
++
++package runtime
++
++import (
++	"runtime/ethanol"
++	"unsafe"
++)
++
++var base2PowVA [19]uintptr
++
++// 0 for 4K, 1 for 2M
++const (
++	INDEX_4K = 0
++	INDEX_2M = 1
++)
++
++var pageBase [2]paSection
++
++type paSection struct {
++	base uintptr
++	next uintptr
++}
++
++func baseInit() {
++	base := uintptr(0xffffffc100000000)
++	step := uintptr(0x0000000100000000)
++	for j := 1; j < 20; j++ {
++		base2PowVA[j-1] = base
++		base += step
++	}
++	pageBase[INDEX_4K].base = 0x80400000
++	pageBase[INDEX_4K].next = 0x80400000
++	pageBase[INDEX_2M].base = 0x80600000
++	pageBase[INDEX_2M].next = 0x80600000
++}
++
++// Don't split the stack as this function may be invoked without a valid G,
++// which prevents us from allocating more stack.
++//go:nosplit
++func sysAlloc(n uintptr, sysStat *sysMemStat) unsafe.Pointer {
++	print("Alloc: ", unsafe.Pointer(n), " bytes \n")
++	p := sysReserve(nil, n)
++	sysMap(p, n, sysStat)
++	return p
++}
++
++func sysUnused(v unsafe.Pointer, n uintptr) {
++}
++
++func sysUsed(v unsafe.Pointer, n uintptr) {
++}
++
++func sysHugePage(v unsafe.Pointer, n uintptr) {
++}
++
++// Don't split the stack as this function may be invoked without a valid G,
++// which prevents us from allocating more stack.
++//go:nosplit
++func sysFree(v unsafe.Pointer, n uintptr, sysStat *sysMemStat) {
++	sysStat.add(-int64(n))
++}
++
++func sysFault(v unsafe.Pointer, n uintptr) {
++}
++
++//go:noinline
++func sysReserve(v unsafe.Pointer, n uintptr) unsafe.Pointer {
++	// Let's ignore the v anyway.
++	// Check ethanol/README for memory map.
++
++	// 4K is the basic unit.
++	order := n >> 12
++	i := uintptr(1)
++	j := uintptr(1)
++	for i < order {
++		i = i << 1
++		// 0xffffff_c0_00000000 is for base kernel
++		//           ^ j = 1(4K) ~ 19(1G)
++		j += 1
++	}
++	ret := base2PowVA[j-1]
++	base2PowVA[j-1] += uintptr(i << 12)
++	print("Reserve: ", unsafe.Pointer(n), " bytes, at ", v, " but at ", unsafe.Pointer(ret), "\n")
++	return unsafe.Pointer(ret)
++}
++
++func updatePageBase(index int) {
++	if index == INDEX_4K {
++		if pageBase[INDEX_4K].next+0x1000 != pageBase[INDEX_2M].base {
++			pageBase[INDEX_4K].next += 0x1000
++		} else {
++			pageBase[INDEX_4K].base = pageBase[INDEX_2M].next
++			pageBase[INDEX_4K].next = pageBase[INDEX_2M].next
++		}
++	} else {
++		if pageBase[INDEX_2M].next+0x200000 != pageBase[INDEX_4K].base {
++			pageBase[INDEX_2M].next += 0x200000
++		} else {
++			pageBase[INDEX_2M].base = pageBase[INDEX_4K].next / 0x200000 * 0x200000
++			pageBase[INDEX_2M].next = pageBase[INDEX_4K].next / 0x200000 * 0x200000
++		}
++	}
++	//print("4K: ", unsafe.Pointer(pageBase[INDEX_4K].base), "-", unsafe.Pointer(pageBase[INDEX_4K].next), "\n")
++	//print("2M: ", unsafe.Pointer(pageBase[INDEX_2M].base), "-", unsafe.Pointer(pageBase[INDEX_2M].next), "\n")
++}
++
++func sysMap(v unsafe.Pointer, n uintptr, sysStat *sysMemStat) {
++	ptr := uintptr(v)
++	sysStat.add(int64(n))
++	print("Map: ", unsafe.Pointer(n), " bytes, at ", unsafe.Pointer(v), "\n")
++	i := uintptr(1)
++	for i < n {
++		i = i << 1
++	}
++	n = i
++	if n <= ethanol.PAGE_TYPE_4K {
++		ethanol.MemoryMap(ptr, pageBase[INDEX_4K].next, ethanol.PAGE_TYPE_4K)
++		updatePageBase(INDEX_4K)
++	} else if n < ethanol.PAGE_TYPE_2M {
++		for n > 0 {
++			ethanol.MemoryMap(ptr, pageBase[INDEX_4K].next, ethanol.PAGE_TYPE_4K)
++			updatePageBase(INDEX_4K)
++			ptr += 0x1000
++			n -= 0x1000
++		}
++	} else {
++		for n > 0 {
++			ethanol.MemoryMap(ptr, pageBase[INDEX_2M].next, ethanol.PAGE_TYPE_2M)
++			updatePageBase(INDEX_2M)
++			ptr += 0x200000
++			n -= 0x200000
++		}
++	}
++	ethanol.SFENCEVMA()
++}
+diff --git a/src/runtime/netpoll_stub.go b/src/runtime/netpoll_stub.go
+index 33ab8eba58..2f40f67915 100644
+--- a/src/runtime/netpoll_stub.go
++++ b/src/runtime/netpoll_stub.go
+@@ -2,8 +2,8 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build plan9
+-// +build plan9
++//go:build plan9 || opensbi
++// +build plan9 opensbi
+ 
+ package runtime
+ 
+diff --git a/src/runtime/os_opensbi.go b/src/runtime/os_opensbi.go
+new file mode 100644
+index 0000000000..3ade0a687f
+--- /dev/null
++++ b/src/runtime/os_opensbi.go
+@@ -0,0 +1,219 @@
++// Copyright 2018 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi && riscv64
++// +build opensbi,riscv64
++
++package runtime
++
++import (
++	"runtime/ethanol"
++	"unsafe"
++)
++
++func exit(code int32) {
++	return
++}
++
++func write2(p uintptr)
++func write1(fd uintptr, p unsafe.Pointer, n int32) int32 {
++	if fd == 2 || fd == 1 {
++		for i := uintptr(0); i < uintptr(n); i++ {
++			write2(uintptr(p) + i)
++		}
++	}
++	return n
++}
++
++// Stubs so tests can link correctly. These should never be called.
++func open(name *byte, mode, perm int32) int32        { panic("not implemented") }
++func closefd(fd int32) int32                         { panic("not implemented") }
++func read(fd int32, p unsafe.Pointer, n int32) int32 { panic("not implemented") }
++
++func usleep(usec uint32) {
++	return
++}
++
++//go:nosplit
++func usleep_no_g(usec uint32) {
++	usleep(usec)
++}
++
++func exitThread(wait *uint32) {
++	return
++}
++
++type mOS struct {
++	tmp0 uintptr
++}
++
++func osyield() {
++	return
++}
++
++//go:nosplit
++func osyield_no_g() {
++	osyield()
++}
++
++const _SIGSEGV = 0xb
++
++func sigpanic() {
++	g := getg()
++	if !canpanic(g) {
++		throw("unexpected signal during runtime execution")
++	}
++
++	// js only invokes the exception handler for memory faults.
++	g.sig = _SIGSEGV
++	panicmem()
++}
++
++type sigset struct{}
++
++// Called to initialize a new m (including the bootstrap m).
++// Called on the parent thread (main thread in case of bootstrap), can allocate memory.
++func mpreinit(mp *m) {
++	mp.gsignal = malg(32 * 1024)
++	mp.gsignal.m = mp
++}
++
++//go:nosplit
++func sigsave(p *sigset) {
++}
++
++//go:nosplit
++func msigrestore(sigmask sigset) {
++}
++
++//go:nosplit
++//go:nowritebarrierrec
++func clearSignalHandlers() {
++}
++
++//go:nosplit
++func sigblock(exiting bool) {
++}
++
++// Called to initialize a new m (including the bootstrap m).
++// Called on the new thread, cannot allocate memory.
++func minit() {
++}
++
++// Called from dropm to undo the effect of an minit.
++func unminit() {
++}
++
++// Called from exitm, but not from drop, to undo the effect of thread-owned
++// resources in minit, semacreate, or elsewhere. Do not take locks after calling this.
++func mdestroy(mp *m) {
++}
++
++var earlyPageTable uintptr
++var argvStr string
++
++const (
++	ON  = true
++	OFF = false
++)
++
++// The entry of ethanol kernel
++func ethanol_trap()
++
++func osinit() {
++	ncpu = 1
++	getg().m.procid = 2
++	physPageSize = 4096
++	memBase, memSize := ethanol.GetMemoryInfo()
++	print("Memory Base:", memBase, "\n")
++	print("Memory Size:", memSize, "\n")
++
++	// For the memory map of ethanol, check
++	// src/runtime/ethanol/README.
++	baseInit()
++	argc = ethanol.GetArgc()
++	print("argc: ", argc, "\n")
++
++	ethanol.SetSscratch(uintptr(0))
++	ethanol.TimerInterrupt(ON)
++	ethanol.Interrupt(ON)
++	ethanol.SetTimer()
++	ethanol.SetStvec(ethanol_trap)
++}
++
++// wasm has no signals
++const _NSIG = 0
++
++func signame(sig uint32) string {
++	return ""
++}
++
++func crash() {
++	*(*int32)(nil) = 0
++}
++
++func getRandomData(r []byte) {
++	return
++}
++
++func goenvs() {
++	goenvs_unix()
++}
++
++func initsig(preinit bool) {
++}
++
++// May run with m.p==nil, so write barriers are not allowed.
++//go:nowritebarrier
++func newosproc(mp *m) {
++	for {
++		var i, j int
++		i = 16
++		j = 10000000
++		for i > 0 {
++			print("i = ", i, "\n")
++			for k := j*i + j; k > 0; k -= 1 {
++			}
++			i -= 1
++		}
++	}
++	panic("newosproc: not implemented")
++}
++
++func setProcessCPUProfiler(hz int32) {}
++func setThreadCPUProfiler(hz int32)  {}
++func sigdisable(uint32)              {}
++func sigenable(uint32)               {}
++func sigignore(uint32)               {}
++
++//go:linkname os_sigpipe os.sigpipe
++func os_sigpipe() {
++	throw("too many writes on closed pipe")
++}
++
++//go:nosplit
++func cputicks() int64
++
++//go:linkname syscall_now syscall.now
++func syscall_now() (sec int64, nsec int32) {
++	sec, nsec, _ = time_now()
++	return
++}
++
++// gsignalStack is unused on js.
++type gsignalStack struct{}
++
++const preemptMSupported = false
++
++func preemptM(mp *m) {
++	// No threads, so nothing to do.
++}
++
++func nanotime1() int64 {
++	return 0
++}
++
++func walltime() (sec int64, nsec int32) {
++	return
++}
+diff --git a/src/runtime/rt0_opensbi_riscv64.s b/src/runtime/rt0_opensbi_riscv64.s
+new file mode 100644
+index 0000000000..a7c9baca2f
+--- /dev/null
++++ b/src/runtime/rt0_opensbi_riscv64.s
+@@ -0,0 +1,218 @@
++// Copyright 2015 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++#include "textflag.h"
++#include "ethanol/csr.h"
++#include "ethanol/config.h"
++
++// the input is in A0
++TEXT dump(SB),NOSPLIT|NOFRAME,$0
++	MOV	A0, A4
++	ADDI	$15, ZERO, A1
++loop:
++	// recover the input
++	MOV	A4, A0
++	// calculate the lowest bit to preserve in A0
++	SLLI    $2, A1, A2
++	SRL	A2, A0, A3
++	// we only need 4 bits
++	ADDI	$0xF, ZERO, A2
++	AND	A3, A2, A0
++
++	// compare to 9
++	ADDI	$9, ZERO, A2
++	BLT     A2, A0, hexa
++hexn:	// number
++	ADD     $48, A0, A0
++	JMP	hex
++hexa:	// alphabet
++	ADD     $87, A0, A0
++hex:
++	// print: A0 is already done
++	MOV     $1, A7
++	MOV	$0, A6
++	ECALL
++
++	// the end of loop
++	ADDI	$-1, A1, A1
++	BGE	A1, ZERO, loop
++
++	// newline
++	MOV	$10, A0
++	MOV     $1, A7
++	MOV	$0, A6
++	ECALL
++
++	RET
++
++TEXT early_halt(SB),NOSPLIT|NOFRAME,$0
++	MOV	$0x49, A0
++	MOV	$1, A7
++	MOV	$0, A6
++	ECALL
++	CSRRS	CSR_SCAUSE, ZERO, A0
++	CALL	dump(SB)
++	CSRRS	CSR_STVAL, ZERO, A0
++	CALL	dump(SB)
++	CSRRS	CSR_SEPC, ZERO, A0
++	CALL	dump(SB)
++
++	CALL	runtime∕ethanol·SetTimer(SB)
++	SRET
++	WFI
++	JMP	early_halt(SB)
++
++TEXT setupFDT(SB),NOSPLIT|NOFRAME,$0
++	// Move DTB from T0 to T1, totally T2 bytes
++	MOV	A1, T0
++	MOV	$runtime·end(SB), T1
++	LBU	4(T0), T2
++	SLL	$8, T2, T2
++	LBU	5(T0), T3
++	ADD	T2, T3, T2
++	SLL	$8, T2, T2
++	LBU	6(T0), T3
++	ADD	T2, T3, T2
++	SLL	$8, T2, T2
++	LBU	7(T0), T3
++	ADD	T2, T3, T2
++	// format FDT as string part 1: address and length
++	MOV     $runtime∕ethanol·fdt(SB), T3
++	MOV	T1, 0(T3)
++	MOV	T2, 8(T3)
++
++move_dtb:
++	LBU	0(T0), T4
++	SB	T4, 0(T1)
++	ADD	$1, T0, T0
++	ADD	$1, T1, T1
++	ADD	$-1, T2, T2
++	BGT	T2, ZERO, move_dtb
++
++	RET
++
++TEXT clearBSS(SB),NOSPLIT|NOFRAME,$0
++	MOV	$runtime·bss(SB), T0
++	MOV	$runtime·enoptrbss(SB), T1
++zeroize:
++	SD	ZERO, 0(T0)
++	ADD	$8, T0, T0
++	BLT	T0, T1, zeroize
++
++	RET
++
++TEXT clearFix(SB),NOSPLIT|NOFRAME,$0
++	MOV	$0x80100000, T0
++	MOV	$0x80200000, T1
++zeroize:
++	SD	ZERO, 0(T0)
++	ADD	$8, T0, T0
++	BLT	T0, T1, zeroize
++
++	RET
++
++TEXT _rt0_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
++	CALL	clearBSS(SB)
++	CALL	clearFix(SB)
++	CALL	setupFDT(SB)
++	JMP	relocate(SB)
++
++TEXT relocate(SB),NOSPLIT|NOFRAME,$0
++	// setup early SP in PA
++	MOV	$runtime·text(SB), SP
++
++	// setup stvec for enabling VA
++	CALL	runtime∕ethanol·SetAddrOffset<ABIInternal>(SB)
++	MOV	$_rt1_riscv64_opensbi(SB), T0
++	MOV	$runtime∕ethanol·AddrOffset(SB), T1
++	MOV	0(T1), T1
++	ADD	T0, T1, T0
++	CSRRW	CSR_STVEC, T0, ZERO
++
++	// Setup page table
++	MOV	EARLY_PT_HI32, T0
++	SLL	$32, T0, T0
++	MOV	EARLY_PT_LO32, T1
++	MOV	$runtime∕ethanol·PageTableRoot(SB), T2
++	ADD	T0, T1, T0
++	MOV	T0, 0(T2)
++	MOV	$runtime∕ethanol·NextPageTable(SB), T2
++	MOV	$3, T0
++	MOV	T0, 0(T2)
++
++	// Setup kernel mapping
++	CALL	map_kernel(SB)
++	// Setup page table mapping
++	CALL	map_page_table(SB)
++	
++	SFENCEVMA
++	MOV	$0x80000000, T0
++	SLL	$32, T0, T0
++	ADD	$0x80100, T0, T0
++	CSRRW	CSR_SATP, T0, ZERO
++
++	// never reach here
++	NOP
++	EBREAK
++
++TEXT map_kernel(SB),NOSPLIT|NOFRAME,$0
++	// 0xffffffc0_00000000 to 0x80200000
++	//         7F_C
++	//            4FE
++	// Level 2
++	MOV	$0x80101000, T0
++	MOV	ZERO, T1
++	ADD	$0x2008000f, T1, T1
++	SD	T1, 0(T0)
++	// Level 1
++	MOV	$0x80100800, T0
++	MOV	ZERO, T1
++	ADD	$0x20040401, T1, T1
++	SD	T1, 0(T0)
++
++	RET
++
++TEXT map_page_table(SB),NOSPLIT|NOFRAME,$0
++	// 0xffffffff_fff00000 to 0x80100000
++	//         7F_C
++	//            4FE
++	// Level 2
++	MOV	$0x80102FF8, T0
++	MOV	ZERO, T1
++	ADD	$0x2000000f, T1, T1
++	SD	T1, 0(T0)
++	// Level 1
++	MOV	$0x80100FF8, T0
++	MOV	ZERO, T1
++	ADD	$0x20040801, T1, T1
++	SD	T1, 0(T0)
++
++	RET
++
++TEXT _rt1_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
++	// Trap vector for debugging
++	MOV	$early_halt(SB), A0
++	CSRRW	CSR_STVEC, A0, ZERO
++
++	// format FDT as string part2: relocate address
++	MOV     $runtime∕ethanol·fdt(SB), T3
++	MOV	0(T3), T1
++	MOV	$runtime∕ethanol·AddrOffset(SB), T2
++	LD	0(T2), T2
++	ADD	T1, T2, T1
++	MOV	T1, 0(T3)
++
++	// setup SP in VA
++	MOV     $0x80202000, SP
++	ADD	SP, T2, SP
++
++	// setup argv
++	MOV	VA_START_HI32, T0
++	SLL	$32, T0, T0
++	MOV	VA_START_LO32, T1
++	ADD	T0, T1, A1
++
++	// General Golang entry
++	MOV	$runtime·rt0_go(SB), T0
++	JALR	ZERO, T0
+diff --git a/src/runtime/stubs2.go b/src/runtime/stubs2.go
+index 525b324c81..1d6b0af1d2 100644
+--- a/src/runtime/stubs2.go
++++ b/src/runtime/stubs2.go
+@@ -2,8 +2,8 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build !aix && !darwin && !js && !openbsd && !plan9 && !solaris && !windows
+-// +build !aix,!darwin,!js,!openbsd,!plan9,!solaris,!windows
++//go:build !aix && !darwin && !js && !openbsd && !opensbi && !plan9 && !solaris && !windows
++// +build !aix,!darwin,!js,!openbsd,!opensbi,!plan9,!solaris,!windows
+ 
+ package runtime
+ 
+diff --git a/src/runtime/stubs3.go b/src/runtime/stubs3.go
+index b895be4c70..f4a451182f 100644
+--- a/src/runtime/stubs3.go
++++ b/src/runtime/stubs3.go
+@@ -2,8 +2,8 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build !aix && !darwin && !freebsd && !openbsd && !plan9 && !solaris
+-// +build !aix,!darwin,!freebsd,!openbsd,!plan9,!solaris
++//go:build !aix && !darwin && !freebsd && !openbsd && !opensbi && !plan9 && !solaris
++// +build !aix,!darwin,!freebsd,!openbsd,!opensbi,!plan9,!solaris
+ 
+ package runtime
+ 
+diff --git a/src/runtime/sys_opensbi_riscv64.s b/src/runtime/sys_opensbi_riscv64.s
+new file mode 100644
+index 0000000000..e22dafc406
+--- /dev/null
++++ b/src/runtime/sys_opensbi_riscv64.s
+@@ -0,0 +1,111 @@
++#include "textflag.h"
++#include "go_asm.h"
++#include "ethanol/csr.h"
++
++// func write2(p uintptr)
++TEXT runtime·write2(SB),NOSPLIT|NOFRAME,$0-8
++	MOV	p+0(FP), A0
++	LB	0(A0), A0
++	MOV	$1, A7
++        MOV	$0, A6
++        ECALL
++        RET
++
++// func ethanol_trap()
++TEXT runtime·ethanol_trap(SB),NOSPLIT|TOPFRAME,$0
++	CSRRW	CSR_SSCRATCH, g, g
++	BNE	g, ZERO, from_user
++from_kernel:
++	CSRRS	CSR_SSCRATCH, ZERO, g
++	MOV	(g_m)(g), g
++from_user:
++	MOV	T0, (m_mOS+mOS_tmp0)(g)
++	MOV	(m_gsignal)(g), T0
++	MOV	(g_stack+stack_hi)(T0), T0
++
++	ADDI	$-288, T0, T0
++	MOV	SP, 8(T0)
++	MOV	T0, SP
++	CSRRW	CSR_SSCRATCH, ZERO, g
++	MOV	g, 208(SP)
++	MOV	(g_m)(g), T0
++	MOV	(m_mOS+mOS_tmp0)(T0), T0
++
++	MOV	RA, 0x00(SP)
++	// skip the SP
++	MOV	GP, 0x10(SP)
++	MOV	TP, 0x18(SP)
++	MOV	T0, 0x20(SP)
++	//ADDI	$1, ZERO, T1
++	//SLL	$63, T1, T1
++	MOV	T1, 0x28(SP)
++	MOV	T2, 0x30(SP)
++	MOV	S0, 0x38(SP)
++	MOV	S1, 0x40(SP)
++	MOV	A0, 0x48(SP)
++	MOV	A1, 0x50(SP)
++	MOV	A2, 0x58(SP)
++	MOV	A3, 0x60(SP)
++	MOV	A4, 0x68(SP)
++	MOV	A5, 0x70(SP)
++	MOV	A6, 0x78(SP)
++	MOV	A7, 0x80(SP)
++	MOV	S2, 0x88(SP)
++	MOV	S3, 0x90(SP)
++	MOV	S4, 0x98(SP)
++	MOV	S5, 0xA0(SP)
++	MOV	S6, 0xA8(SP)
++	MOV	S7, 0xB0(SP)
++	MOV	S8, 0xB8(SP)
++	MOV	S9, 0xC0(SP)
++	MOV	S10, 0xC8(SP)
++	// skip the g
++	MOV	T3, 0xD8(SP)
++	MOV	T4, 0xE0(SP)
++	MOV	T5, 0xE8(SP)
++	MOV	T6, 0xF0(SP)
++	MOV	T6, 0xF0(SP)
++	CSRRW	CSR_SCAUSE, ZERO, T6
++	MOV	T6, 0xFF(SP)
++	CSRRW	CSR_SEPC, ZERO, T6
++	MOV	T6, 0x100(SP)
++	CSRRW	CSR_STVAL, ZERO, T6
++	MOV	T6, 0x108(SP)
++
++	// TODO: setup g for the handling
++	CALL	runtime∕ethanol·SetTimer(SB)
++	// TODO: reset sscratch for user space
++	MOV	0x100(SP), T6
++	CSRRW	CSR_SEPC, T6, ZERO
++	MOV	0x00(SP), RA
++	MOV	0x10(SP), GP
++	MOV	0x18(SP), TP
++	MOV	0x20(SP), T0
++	MOV	0x28(SP), T1
++	MOV	0x30(SP), T2
++	MOV	0x38(SP), S0
++	MOV	0x40(SP), S1
++	MOV	0x48(SP), A0
++	MOV	0x50(SP), A1
++	MOV	0x58(SP), A2
++	MOV	0x60(SP), A3
++	MOV	0x68(SP), A4
++	MOV	0x70(SP), A5
++	MOV	0x78(SP), A6
++	MOV	0x80(SP), A7
++	MOV	0x88(SP), S2
++	MOV	0x90(SP), S3
++	MOV	0x98(SP), S4
++	MOV	0xA0(SP), S5
++	MOV	0xA8(SP), S6
++	MOV	0xB0(SP), S7
++	MOV	0xB8(SP), S8
++	MOV	0xC0(SP), S9
++	MOV	0xC8(SP), S10
++	MOV	0xD0(SP), g
++	MOV	0xD8(SP), T3
++	MOV	0xE0(SP), T4
++	MOV	0xE8(SP), T5
++	MOV	0xF0(SP), T6
++	MOV	0x08(SP), SP
++	SRET
+diff --git a/src/runtime/timestub2.go b/src/runtime/timestub2.go
+index 800a2a94e0..3f72cba046 100644
+--- a/src/runtime/timestub2.go
++++ b/src/runtime/timestub2.go
+@@ -2,11 +2,12 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build !aix && !darwin && !freebsd && !openbsd && !solaris && !windows && !(linux && amd64)
++//go:build !aix && !darwin && !freebsd && !openbsd && !opensbi && !solaris && !windows && !(linux && amd64)
+ // +build !aix
+ // +build !darwin
+ // +build !freebsd
+ // +build !openbsd
++// +build !opensbi
+ // +build !solaris
+ // +build !windows
+ // +build !linux !amd64
+diff --git a/src/syscall/dir_opensbi.go b/src/syscall/dir_opensbi.go
+new file mode 100644
+index 0000000000..c921067b33
+--- /dev/null
++++ b/src/syscall/dir_opensbi.go
+@@ -0,0 +1,33 @@
++// Copyright 2012 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package syscall
++
++type Dir struct {
++	Mode   uint32 // permissions
++	Atime  uint32 // last read time
++	Mtime  uint32 // last write time
++	Length int64  // file length
++	Name   string // last element of path
++	Uid    string // owner name
++	Gid    string // group name
++	Muid   string // last modifier name
++}
++
++var nullDir = Dir{
++	Mode:   ^uint32(0),
++	Atime:  ^uint32(0),
++	Mtime:  ^uint32(0),
++	Length: ^int64(0),
++}
++
++func (d *Dir) Null() { *d = nullDir }
++
++func (d *Dir) Marshal(b []byte) (n int, err error) {
++	return 0, nil
++}
++
++func UnmarshalDir(b []byte) (*Dir, error) {
++	return nil, nil
++}
+diff --git a/src/syscall/dirent.go b/src/syscall/dirent.go
+index 9e1222e81c..5b1a399e65 100644
+--- a/src/syscall/dirent.go
++++ b/src/syscall/dirent.go
+@@ -2,8 +2,8 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build aix || darwin || dragonfly || freebsd || (js && wasm) || linux || netbsd || openbsd || solaris
+-// +build aix darwin dragonfly freebsd js,wasm linux netbsd openbsd solaris
++//go:build aix || darwin || dragonfly || freebsd || (js && wasm) || linux || netbsd || openbsd || opensbi || solaris
++// +build aix darwin dragonfly freebsd js,wasm linux netbsd openbsd opensbi solaris
+ 
+ package syscall
+ 
+diff --git a/src/syscall/env_opensbi.go b/src/syscall/env_opensbi.go
+new file mode 100644
+index 0000000000..1b5cd9b485
+--- /dev/null
++++ b/src/syscall/env_opensbi.go
+@@ -0,0 +1,26 @@
++// Copyright 2010 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package syscall
++
++func Getenv(key string) (value string, found bool) {
++	return "", false
++}
++
++func Setenv(key, value string) error {
++	return nil
++}
++
++func Unsetenv(key string) error {
++	return nil
++}
++
++func Clearenv() {
++	return
++}
++
++func Environ() []string {
++	r := make([]string, 0) // Empty with room to grow.
++	return r
++}
+diff --git a/src/syscall/fs_opensbi.go b/src/syscall/fs_opensbi.go
+new file mode 100644
+index 0000000000..d99db26d1f
+--- /dev/null
++++ b/src/syscall/fs_opensbi.go
+@@ -0,0 +1,131 @@
++// Copyright 2018 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi && riscv64
++// +build opensbi,riscv64
++
++package syscall
++
++// Provided by package runtime.
++func now() (sec int64, nsec int32)
++
++func CloseOnExec(fd int) {
++	// nothing to do - no exec
++}
++
++func Mkdir(path string, perm uint32) error {
++	return nil
++}
++
++func ReadDirent(fd int, buf []byte) (int, error) {
++	return 0, nil
++}
++
++func Stat(path string, st *Stat_t) error {
++	return nil
++}
++
++func Lstat(path string, st *Stat_t) error {
++	return nil
++}
++
++func Fstat(fd int, st *Stat_t) error {
++	return nil
++}
++
++func Unlink(path string) error {
++	return nil
++}
++
++func Rmdir(path string) error {
++	return nil
++}
++
++func Chmod(path string, mode uint32) error {
++	return nil
++}
++
++func Fchmod(fd int, mode uint32) error {
++	return nil
++}
++
++func Chown(path string, uid, gid int) error {
++	return nil
++}
++
++func Fchown(fd int, uid, gid int) error {
++	return nil
++}
++
++func Lchown(path string, uid, gid int) error {
++	return nil
++}
++
++func UtimesNano(path string, ts []Timespec) error {
++	return nil
++}
++
++func Rename(from, to string) error {
++	return nil
++}
++
++func Truncate(path string, length int64) error {
++	return nil
++}
++
++func Ftruncate(fd int, length int64) error {
++	return nil
++}
++
++func Getcwd(buf []byte) (n int, err error) {
++	return 0, nil
++}
++
++func Chdir(path string) (err error) {
++	return nil
++}
++
++func Fchdir(fd int) error {
++	return nil
++}
++
++func Readlink(path string, buf []byte) (n int, err error) {
++	return 0, nil
++}
++
++func Link(path, link string) error {
++	return nil
++}
++
++func Symlink(path, link string) error {
++	return nil
++}
++
++func Fsync(fd int) error {
++	return nil
++}
++
++func Write(fd int, b []byte) (int, error) {
++	return 0, nil
++}
++
++func Pread(fd int, b []byte, offset int64) (int, error) {
++	return 0, nil
++}
++
++func Pwrite(fd int, b []byte, offset int64) (int, error) {
++	return 0, nil
++}
++
++func Dup(fd int) (int, error) {
++	return 0, nil
++}
++
++func Dup2(fd, newfd int) error {
++	return nil
++}
++
++func Pipe(fd []int) error {
++	return ENOSYS
++}
+diff --git a/src/syscall/syscall_opensbi.go b/src/syscall/syscall_opensbi.go
+new file mode 100644
+index 0000000000..43aaa89755
+--- /dev/null
++++ b/src/syscall/syscall_opensbi.go
+@@ -0,0 +1,364 @@
++// Copyright 2018 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi && riscv64
++// +build opensbi,riscv64
++
++package syscall
++
++import (
++	"internal/itoa"
++	"internal/oserror"
++	"sync"
++	"unsafe"
++)
++
++const direntSize = 8 + 8 + 2 + 256
++
++type Dirent struct {
++	Reclen uint16
++	Name   [256]byte
++}
++
++func direntIno(buf []byte) (uint64, bool) {
++	return 1, true
++}
++
++func direntReclen(buf []byte) (uint64, bool) {
++	return readInt(buf, unsafe.Offsetof(Dirent{}.Reclen), unsafe.Sizeof(Dirent{}.Reclen))
++}
++
++func direntNamlen(buf []byte) (uint64, bool) {
++	reclen, ok := direntReclen(buf)
++	if !ok {
++		return 0, false
++	}
++	return reclen - uint64(unsafe.Offsetof(Dirent{}.Name)), true
++}
++
++const PathMax = 256
++
++// An Errno is an unsigned number describing an error condition.
++// It implements the error interface. The zero Errno is by convention
++// a non-error, so code to convert from Errno to error should use:
++//	err = nil
++//	if errno != 0 {
++//		err = errno
++//	}
++//
++// Errno values can be tested against error values from the os package
++// using errors.Is. For example:
++//
++//	_, _, err := syscall.Syscall(...)
++//	if errors.Is(err, fs.ErrNotExist) ...
++type Errno uintptr
++
++func (e Errno) Error() string {
++	if 0 <= int(e) && int(e) < len(errorstr) {
++		s := errorstr[e]
++		if s != "" {
++			return s
++		}
++	}
++	return "errno " + itoa.Itoa(int(e))
++}
++
++func (e Errno) Is(target error) bool {
++	switch target {
++	case oserror.ErrPermission:
++		return e == EACCES || e == EPERM
++	case oserror.ErrExist:
++		return e == EEXIST || e == ENOTEMPTY
++	case oserror.ErrNotExist:
++		return e == ENOENT
++	}
++	return false
++}
++
++func (e Errno) Temporary() bool {
++	return e == EINTR || e == EMFILE || e.Timeout()
++}
++
++func (e Errno) Timeout() bool {
++	return e == EAGAIN || e == EWOULDBLOCK || e == ETIMEDOUT
++}
++
++// A Signal is a number describing a process signal.
++// It implements the os.Signal interface.
++type Signal int
++
++const (
++	_ Signal = iota
++	SIGCHLD
++	SIGINT
++	SIGKILL
++	SIGTRAP
++	SIGQUIT
++	SIGTERM
++)
++
++func (s Signal) Signal() {}
++
++func (s Signal) String() string {
++	if 0 <= s && int(s) < len(signals) {
++		str := signals[s]
++		if str != "" {
++			return str
++		}
++	}
++	return "signal " + itoa.Itoa(int(s))
++}
++
++var signals = [...]string{}
++
++// File system
++
++const (
++	Stdin  = 0
++	Stdout = 1
++	Stderr = 2
++)
++
++const (
++	O_RDONLY = 0
++	O_WRONLY = 1
++	O_RDWR   = 2
++
++	O_CREAT  = 0100
++	O_CREATE = O_CREAT
++	O_TRUNC  = 01000
++	O_APPEND = 02000
++	O_EXCL   = 0200
++	O_SYNC   = 010000
++
++	O_CLOEXEC = 0
++)
++
++const (
++	F_DUPFD   = 0
++	F_GETFD   = 1
++	F_SETFD   = 2
++	F_GETFL   = 3
++	F_SETFL   = 4
++	F_GETOWN  = 5
++	F_SETOWN  = 6
++	F_GETLK   = 7
++	F_SETLK   = 8
++	F_SETLKW  = 9
++	F_RGETLK  = 10
++	F_RSETLK  = 11
++	F_CNVT    = 12
++	F_RSETLKW = 13
++
++	F_RDLCK   = 1
++	F_WRLCK   = 2
++	F_UNLCK   = 3
++	F_UNLKSYS = 4
++)
++
++const (
++	S_IFMT        = 0000370000
++	S_IFSHM_SYSV  = 0000300000
++	S_IFSEMA      = 0000270000
++	S_IFCOND      = 0000260000
++	S_IFMUTEX     = 0000250000
++	S_IFSHM       = 0000240000
++	S_IFBOUNDSOCK = 0000230000
++	S_IFSOCKADDR  = 0000220000
++	S_IFDSOCK     = 0000210000
++
++	S_IFSOCK = 0000140000
++	S_IFLNK  = 0000120000
++	S_IFREG  = 0000100000
++	S_IFBLK  = 0000060000
++	S_IFDIR  = 0000040000
++	S_IFCHR  = 0000020000
++	S_IFIFO  = 0000010000
++
++	S_UNSUP = 0000370000
++
++	S_ISUID = 0004000
++	S_ISGID = 0002000
++	S_ISVTX = 0001000
++
++	S_IREAD  = 0400
++	S_IWRITE = 0200
++	S_IEXEC  = 0100
++
++	S_IRWXU = 0700
++	S_IRUSR = 0400
++	S_IWUSR = 0200
++	S_IXUSR = 0100
++
++	S_IRWXG = 070
++	S_IRGRP = 040
++	S_IWGRP = 020
++	S_IXGRP = 010
++
++	S_IRWXO = 07
++	S_IROTH = 04
++	S_IWOTH = 02
++	S_IXOTH = 01
++)
++
++type Stat_t struct {
++	Dev       int64
++	Ino       uint64
++	Mode      uint32
++	Nlink     uint32
++	Uid       uint32
++	Gid       uint32
++	Rdev      int64
++	Size      int64
++	Blksize   int32
++	Blocks    int32
++	Atime     int64
++	AtimeNsec int64
++	Mtime     int64
++	MtimeNsec int64
++	Ctime     int64
++	CtimeNsec int64
++}
++
++// Processes
++// Not supported - just enough for package os.
++
++var ForkLock sync.RWMutex
++
++type WaitStatus uint32
++
++func (w WaitStatus) Exited() bool       { return false }
++func (w WaitStatus) ExitStatus() int    { return 0 }
++func (w WaitStatus) Signaled() bool     { return false }
++func (w WaitStatus) Signal() Signal     { return 0 }
++func (w WaitStatus) CoreDump() bool     { return false }
++func (w WaitStatus) Stopped() bool      { return false }
++func (w WaitStatus) Continued() bool    { return false }
++func (w WaitStatus) StopSignal() Signal { return 0 }
++func (w WaitStatus) TrapCause() int     { return 0 }
++
++// XXX made up
++type Rusage struct {
++	Utime Timeval
++	Stime Timeval
++}
++
++// XXX made up
++type ProcAttr struct {
++	Dir   string
++	Env   []string
++	Files []uintptr
++	Sys   *SysProcAttr
++}
++
++type SysProcAttr struct {
++}
++
++func Syscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno) {
++	return 0, 0, ENOSYS
++}
++
++func Syscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err Errno) {
++	return 0, 0, ENOSYS
++}
++
++func RawSyscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno) {
++	return 0, 0, ENOSYS
++}
++
++func RawSyscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err Errno) {
++	return 0, 0, ENOSYS
++}
++
++func Sysctl(key string) (string, error) {
++	if key == "kern.hostname" {
++		return "js", nil
++	}
++	return "", ENOSYS
++}
++
++const ImplementsGetwd = true
++
++func Getwd() (wd string, err error) {
++	return "", nil
++}
++
++func Getuid() int {
++	return 0
++}
++
++func Getgid() int {
++	return 0
++}
++
++func Geteuid() int {
++	return 0
++}
++
++func Getegid() int {
++	return 0
++}
++
++func Getgroups() (groups []int, err error) {
++	groups = make([]int, 0)
++	return groups, nil
++}
++
++func Getpid() int {
++	return 0
++}
++
++func Getppid() int {
++	return 0
++}
++
++func Umask(mask int) (oldmask int) {
++	return 0
++}
++
++func Gettimeofday(tv *Timeval) error { return ENOSYS }
++
++func Kill(pid int, signum Signal) error { return ENOSYS }
++func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err error) {
++	return 0, ENOSYS
++}
++func StartProcess(argv0 string, argv []string, attr *ProcAttr) (pid int, handle uintptr, err error) {
++	return 0, 0, ENOSYS
++}
++func Wait4(pid int, wstatus *WaitStatus, options int, rusage *Rusage) (wpid int, err error) {
++	return 0, ENOSYS
++}
++
++type Iovec struct{} // dummy
++
++type Timespec struct {
++	Sec  int64
++	Nsec int64
++}
++
++type Timeval struct {
++	Sec  int64
++	Usec int64
++}
++
++func setTimespec(sec, nsec int64) Timespec {
++	return Timespec{Sec: sec, Nsec: nsec}
++}
++
++func setTimeval(sec, usec int64) Timeval {
++	return Timeval{Sec: sec, Usec: usec}
++}
++
++func Seek(fd int, offset int64, whence int) (newoffset int64, err error) {
++	return 0, nil
++}
++func Close(fd int) (err error) {
++	return nil
++}
++func Open(path string, mode int) (fd int, err error) {
++	return 0, nil
++}
++func Read(fd int, p []byte) (n int, err error) {
++	return 0, nil
++}
+diff --git a/src/syscall/tables_opensbi.go b/src/syscall/tables_opensbi.go
+new file mode 100644
+index 0000000000..9c71354c1d
+--- /dev/null
++++ b/src/syscall/tables_opensbi.go
+@@ -0,0 +1,495 @@
++// Copyright 2013 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi && riscv64
++// +build opensbi,riscv64
++
++package syscall
++
++import "runtime"
++
++// These were originally used by Nacl, then later also used by
++// js/wasm. Now that they're only used by js/wasm, these numbers are
++// just arbitrary.
++//
++// TODO: delete? replace with something meaningful?
++const (
++	sys_null                 = 1
++	sys_nameservice          = 2
++	sys_dup                  = 8
++	sys_dup2                 = 9
++	sys_open                 = 10
++	sys_close                = 11
++	sys_read                 = 12
++	sys_write                = 13
++	sys_lseek                = 14
++	sys_stat                 = 16
++	sys_fstat                = 17
++	sys_chmod                = 18
++	sys_isatty               = 19
++	sys_brk                  = 20
++	sys_mmap                 = 21
++	sys_munmap               = 22
++	sys_getdents             = 23
++	sys_mprotect             = 24
++	sys_list_mappings        = 25
++	sys_exit                 = 30
++	sys_getpid               = 31
++	sys_sched_yield          = 32
++	sys_sysconf              = 33
++	sys_gettimeofday         = 40
++	sys_clock                = 41
++	sys_nanosleep            = 42
++	sys_clock_getres         = 43
++	sys_clock_gettime        = 44
++	sys_mkdir                = 45
++	sys_rmdir                = 46
++	sys_chdir                = 47
++	sys_getcwd               = 48
++	sys_unlink               = 49
++	sys_imc_makeboundsock    = 60
++	sys_imc_accept           = 61
++	sys_imc_connect          = 62
++	sys_imc_sendmsg          = 63
++	sys_imc_recvmsg          = 64
++	sys_imc_mem_obj_create   = 65
++	sys_imc_socketpair       = 66
++	sys_mutex_create         = 70
++	sys_mutex_lock           = 71
++	sys_mutex_trylock        = 72
++	sys_mutex_unlock         = 73
++	sys_cond_create          = 74
++	sys_cond_wait            = 75
++	sys_cond_signal          = 76
++	sys_cond_broadcast       = 77
++	sys_cond_timed_wait_abs  = 79
++	sys_thread_create        = 80
++	sys_thread_exit          = 81
++	sys_tls_init             = 82
++	sys_thread_nice          = 83
++	sys_tls_get              = 84
++	sys_second_tls_set       = 85
++	sys_second_tls_get       = 86
++	sys_exception_handler    = 87
++	sys_exception_stack      = 88
++	sys_exception_clear_flag = 89
++	sys_sem_create           = 100
++	sys_sem_wait             = 101
++	sys_sem_post             = 102
++	sys_sem_get_value        = 103
++	sys_dyncode_create       = 104
++	sys_dyncode_modify       = 105
++	sys_dyncode_delete       = 106
++	sys_test_infoleak        = 109
++	sys_test_crash           = 110
++	sys_test_syscall_1       = 111
++	sys_test_syscall_2       = 112
++	sys_futex_wait_abs       = 120
++	sys_futex_wake           = 121
++	sys_pread                = 130
++	sys_pwrite               = 131
++	sys_truncate             = 140
++	sys_lstat                = 141
++	sys_link                 = 142
++	sys_rename               = 143
++	sys_symlink              = 144
++	sys_access               = 145
++	sys_readlink             = 146
++	sys_utimes               = 147
++	sys_get_random_bytes     = 150
++)
++
++// TODO: Auto-generate some day. (Hard-coded in binaries so not likely to change.)
++const (
++	// native_client/src/trusted/service_runtime/include/sys/errno.h
++	// The errors are mainly copied from Linux.
++	EPERM           Errno = 1       /* Operation not permitted */
++	ENOENT          Errno = 2       /* No such file or directory */
++	ESRCH           Errno = 3       /* No such process */
++	EINTR           Errno = 4       /* Interrupted system call */
++	EIO             Errno = 5       /* I/O error */
++	ENXIO           Errno = 6       /* No such device or address */
++	E2BIG           Errno = 7       /* Argument list too long */
++	ENOEXEC         Errno = 8       /* Exec format error */
++	EBADF           Errno = 9       /* Bad file number */
++	ECHILD          Errno = 10      /* No child processes */
++	EAGAIN          Errno = 11      /* Try again */
++	ENOMEM          Errno = 12      /* Out of memory */
++	EACCES          Errno = 13      /* Permission denied */
++	EFAULT          Errno = 14      /* Bad address */
++	EBUSY           Errno = 16      /* Device or resource busy */
++	EEXIST          Errno = 17      /* File exists */
++	EXDEV           Errno = 18      /* Cross-device link */
++	ENODEV          Errno = 19      /* No such device */
++	ENOTDIR         Errno = 20      /* Not a directory */
++	EISDIR          Errno = 21      /* Is a directory */
++	EINVAL          Errno = 22      /* Invalid argument */
++	ENFILE          Errno = 23      /* File table overflow */
++	EMFILE          Errno = 24      /* Too many open files */
++	ENOTTY          Errno = 25      /* Not a typewriter */
++	EFBIG           Errno = 27      /* File too large */
++	ENOSPC          Errno = 28      /* No space left on device */
++	ESPIPE          Errno = 29      /* Illegal seek */
++	EROFS           Errno = 30      /* Read-only file system */
++	EMLINK          Errno = 31      /* Too many links */
++	EPIPE           Errno = 32      /* Broken pipe */
++	ENAMETOOLONG    Errno = 36      /* File name too long */
++	ENOSYS          Errno = 38      /* Function not implemented */
++	EDQUOT          Errno = 122     /* Quota exceeded */
++	EDOM            Errno = 33      /* Math arg out of domain of func */
++	ERANGE          Errno = 34      /* Math result not representable */
++	EDEADLK         Errno = 35      /* Deadlock condition */
++	ENOLCK          Errno = 37      /* No record locks available */
++	ENOTEMPTY       Errno = 39      /* Directory not empty */
++	ELOOP           Errno = 40      /* Too many symbolic links */
++	ENOMSG          Errno = 42      /* No message of desired type */
++	EIDRM           Errno = 43      /* Identifier removed */
++	ECHRNG          Errno = 44      /* Channel number out of range */
++	EL2NSYNC        Errno = 45      /* Level 2 not synchronized */
++	EL3HLT          Errno = 46      /* Level 3 halted */
++	EL3RST          Errno = 47      /* Level 3 reset */
++	ELNRNG          Errno = 48      /* Link number out of range */
++	EUNATCH         Errno = 49      /* Protocol driver not attached */
++	ENOCSI          Errno = 50      /* No CSI structure available */
++	EL2HLT          Errno = 51      /* Level 2 halted */
++	EBADE           Errno = 52      /* Invalid exchange */
++	EBADR           Errno = 53      /* Invalid request descriptor */
++	EXFULL          Errno = 54      /* Exchange full */
++	ENOANO          Errno = 55      /* No anode */
++	EBADRQC         Errno = 56      /* Invalid request code */
++	EBADSLT         Errno = 57      /* Invalid slot */
++	EDEADLOCK       Errno = EDEADLK /* File locking deadlock error */
++	EBFONT          Errno = 59      /* Bad font file fmt */
++	ENOSTR          Errno = 60      /* Device not a stream */
++	ENODATA         Errno = 61      /* No data (for no delay io) */
++	ETIME           Errno = 62      /* Timer expired */
++	ENOSR           Errno = 63      /* Out of streams resources */
++	ENONET          Errno = 64      /* Machine is not on the network */
++	ENOPKG          Errno = 65      /* Package not installed */
++	EREMOTE         Errno = 66      /* The object is remote */
++	ENOLINK         Errno = 67      /* The link has been severed */
++	EADV            Errno = 68      /* Advertise error */
++	ESRMNT          Errno = 69      /* Srmount error */
++	ECOMM           Errno = 70      /* Communication error on send */
++	EPROTO          Errno = 71      /* Protocol error */
++	EMULTIHOP       Errno = 72      /* Multihop attempted */
++	EDOTDOT         Errno = 73      /* Cross mount point (not really error) */
++	EBADMSG         Errno = 74      /* Trying to read unreadable message */
++	EOVERFLOW       Errno = 75      /* Value too large for defined data type */
++	ENOTUNIQ        Errno = 76      /* Given log. name not unique */
++	EBADFD          Errno = 77      /* f.d. invalid for this operation */
++	EREMCHG         Errno = 78      /* Remote address changed */
++	ELIBACC         Errno = 79      /* Can't access a needed shared lib */
++	ELIBBAD         Errno = 80      /* Accessing a corrupted shared lib */
++	ELIBSCN         Errno = 81      /* .lib section in a.out corrupted */
++	ELIBMAX         Errno = 82      /* Attempting to link in too many libs */
++	ELIBEXEC        Errno = 83      /* Attempting to exec a shared library */
++	EILSEQ          Errno = 84
++	EUSERS          Errno = 87
++	ENOTSOCK        Errno = 88  /* Socket operation on non-socket */
++	EDESTADDRREQ    Errno = 89  /* Destination address required */
++	EMSGSIZE        Errno = 90  /* Message too long */
++	EPROTOTYPE      Errno = 91  /* Protocol wrong type for socket */
++	ENOPROTOOPT     Errno = 92  /* Protocol not available */
++	EPROTONOSUPPORT Errno = 93  /* Unknown protocol */
++	ESOCKTNOSUPPORT Errno = 94  /* Socket type not supported */
++	EOPNOTSUPP      Errno = 95  /* Operation not supported on transport endpoint */
++	EPFNOSUPPORT    Errno = 96  /* Protocol family not supported */
++	EAFNOSUPPORT    Errno = 97  /* Address family not supported by protocol family */
++	EADDRINUSE      Errno = 98  /* Address already in use */
++	EADDRNOTAVAIL   Errno = 99  /* Address not available */
++	ENETDOWN        Errno = 100 /* Network interface is not configured */
++	ENETUNREACH     Errno = 101 /* Network is unreachable */
++	ENETRESET       Errno = 102
++	ECONNABORTED    Errno = 103 /* Connection aborted */
++	ECONNRESET      Errno = 104 /* Connection reset by peer */
++	ENOBUFS         Errno = 105 /* No buffer space available */
++	EISCONN         Errno = 106 /* Socket is already connected */
++	ENOTCONN        Errno = 107 /* Socket is not connected */
++	ESHUTDOWN       Errno = 108 /* Can't send after socket shutdown */
++	ETOOMANYREFS    Errno = 109
++	ETIMEDOUT       Errno = 110 /* Connection timed out */
++	ECONNREFUSED    Errno = 111 /* Connection refused */
++	EHOSTDOWN       Errno = 112 /* Host is down */
++	EHOSTUNREACH    Errno = 113 /* Host is unreachable */
++	EALREADY        Errno = 114 /* Socket already connected */
++	EINPROGRESS     Errno = 115 /* Connection already in progress */
++	ESTALE          Errno = 116
++	ENOTSUP         Errno = EOPNOTSUPP /* Not supported */
++	ENOMEDIUM       Errno = 123        /* No medium (in tape drive) */
++	ECANCELED       Errno = 125        /* Operation canceled. */
++	ELBIN           Errno = 2048       /* Inode is remote (not really error) */
++	EFTYPE          Errno = 2049       /* Inappropriate file type or format */
++	ENMFILE         Errno = 2050       /* No more files */
++	EPROCLIM        Errno = 2051
++	ENOSHARE        Errno = 2052   /* No such host or network path */
++	ECASECLASH      Errno = 2053   /* Filename exists with different case */
++	EWOULDBLOCK     Errno = EAGAIN /* Operation would block */
++)
++
++// TODO: Auto-generate some day. (Hard-coded in binaries so not likely to change.)
++var errorstr = [...]string{
++	EPERM:           "Operation not permitted",
++	ENOENT:          "No such file or directory",
++	ESRCH:           "No such process",
++	EINTR:           "Interrupted system call",
++	EIO:             "I/O error",
++	ENXIO:           "No such device or address",
++	E2BIG:           "Argument list too long",
++	ENOEXEC:         "Exec format error",
++	EBADF:           "Bad file number",
++	ECHILD:          "No child processes",
++	EAGAIN:          "Try again",
++	ENOMEM:          "Out of memory",
++	EACCES:          "Permission denied",
++	EFAULT:          "Bad address",
++	EBUSY:           "Device or resource busy",
++	EEXIST:          "File exists",
++	EXDEV:           "Cross-device link",
++	ENODEV:          "No such device",
++	ENOTDIR:         "Not a directory",
++	EISDIR:          "Is a directory",
++	EINVAL:          "Invalid argument",
++	ENFILE:          "File table overflow",
++	EMFILE:          "Too many open files",
++	ENOTTY:          "Not a typewriter",
++	EFBIG:           "File too large",
++	ENOSPC:          "No space left on device",
++	ESPIPE:          "Illegal seek",
++	EROFS:           "Read-only file system",
++	EMLINK:          "Too many links",
++	EPIPE:           "Broken pipe",
++	ENAMETOOLONG:    "File name too long",
++	ENOSYS:          "not implemented on " + runtime.GOOS,
++	EDQUOT:          "Quota exceeded",
++	EDOM:            "Math arg out of domain of func",
++	ERANGE:          "Math result not representable",
++	EDEADLK:         "Deadlock condition",
++	ENOLCK:          "No record locks available",
++	ENOTEMPTY:       "Directory not empty",
++	ELOOP:           "Too many symbolic links",
++	ENOMSG:          "No message of desired type",
++	EIDRM:           "Identifier removed",
++	ECHRNG:          "Channel number out of range",
++	EL2NSYNC:        "Level 2 not synchronized",
++	EL3HLT:          "Level 3 halted",
++	EL3RST:          "Level 3 reset",
++	ELNRNG:          "Link number out of range",
++	EUNATCH:         "Protocol driver not attached",
++	ENOCSI:          "No CSI structure available",
++	EL2HLT:          "Level 2 halted",
++	EBADE:           "Invalid exchange",
++	EBADR:           "Invalid request descriptor",
++	EXFULL:          "Exchange full",
++	ENOANO:          "No anode",
++	EBADRQC:         "Invalid request code",
++	EBADSLT:         "Invalid slot",
++	EBFONT:          "Bad font file fmt",
++	ENOSTR:          "Device not a stream",
++	ENODATA:         "No data (for no delay io)",
++	ETIME:           "Timer expired",
++	ENOSR:           "Out of streams resources",
++	ENONET:          "Machine is not on the network",
++	ENOPKG:          "Package not installed",
++	EREMOTE:         "The object is remote",
++	ENOLINK:         "The link has been severed",
++	EADV:            "Advertise error",
++	ESRMNT:          "Srmount error",
++	ECOMM:           "Communication error on send",
++	EPROTO:          "Protocol error",
++	EMULTIHOP:       "Multihop attempted",
++	EDOTDOT:         "Cross mount point (not really error)",
++	EBADMSG:         "Trying to read unreadable message",
++	EOVERFLOW:       "Value too large for defined data type",
++	ENOTUNIQ:        "Given log. name not unique",
++	EBADFD:          "f.d. invalid for this operation",
++	EREMCHG:         "Remote address changed",
++	ELIBACC:         "Can't access a needed shared lib",
++	ELIBBAD:         "Accessing a corrupted shared lib",
++	ELIBSCN:         ".lib section in a.out corrupted",
++	ELIBMAX:         "Attempting to link in too many libs",
++	ELIBEXEC:        "Attempting to exec a shared library",
++	ENOTSOCK:        "Socket operation on non-socket",
++	EDESTADDRREQ:    "Destination address required",
++	EMSGSIZE:        "Message too long",
++	EPROTOTYPE:      "Protocol wrong type for socket",
++	ENOPROTOOPT:     "Protocol not available",
++	EPROTONOSUPPORT: "Unknown protocol",
++	ESOCKTNOSUPPORT: "Socket type not supported",
++	EOPNOTSUPP:      "Operation not supported on transport endpoint",
++	EPFNOSUPPORT:    "Protocol family not supported",
++	EAFNOSUPPORT:    "Address family not supported by protocol family",
++	EADDRINUSE:      "Address already in use",
++	EADDRNOTAVAIL:   "Address not available",
++	ENETDOWN:        "Network interface is not configured",
++	ENETUNREACH:     "Network is unreachable",
++	ECONNABORTED:    "Connection aborted",
++	ECONNRESET:      "Connection reset by peer",
++	ENOBUFS:         "No buffer space available",
++	EISCONN:         "Socket is already connected",
++	ENOTCONN:        "Socket is not connected",
++	ESHUTDOWN:       "Can't send after socket shutdown",
++	ETIMEDOUT:       "Connection timed out",
++	ECONNREFUSED:    "Connection refused",
++	EHOSTDOWN:       "Host is down",
++	EHOSTUNREACH:    "Host is unreachable",
++	EALREADY:        "Socket already connected",
++	EINPROGRESS:     "Connection already in progress",
++	ENOMEDIUM:       "No medium (in tape drive)",
++	ECANCELED:       "Operation canceled.",
++	ELBIN:           "Inode is remote (not really error)",
++	EFTYPE:          "Inappropriate file type or format",
++	ENMFILE:         "No more files",
++	ENOSHARE:        "No such host or network path",
++	ECASECLASH:      "Filename exists with different case",
++}
++
++// Do the interface allocations only once for common
++// Errno values.
++var (
++	errEAGAIN error = EAGAIN
++	errEINVAL error = EINVAL
++	errENOENT error = ENOENT
++)
++
++// errnoErr returns common boxed Errno values, to prevent
++// allocations at runtime.
++func errnoErr(e Errno) error {
++	switch e {
++	case 0:
++		return nil
++	case EAGAIN:
++		return errEAGAIN
++	case EINVAL:
++		return errEINVAL
++	case ENOENT:
++		return errENOENT
++	}
++	return e
++}
++
++var errnoByCode = map[string]Errno{
++	"EPERM":           EPERM,
++	"ENOENT":          ENOENT,
++	"ESRCH":           ESRCH,
++	"EINTR":           EINTR,
++	"EIO":             EIO,
++	"ENXIO":           ENXIO,
++	"E2BIG":           E2BIG,
++	"ENOEXEC":         ENOEXEC,
++	"EBADF":           EBADF,
++	"ECHILD":          ECHILD,
++	"EAGAIN":          EAGAIN,
++	"ENOMEM":          ENOMEM,
++	"EACCES":          EACCES,
++	"EFAULT":          EFAULT,
++	"EBUSY":           EBUSY,
++	"EEXIST":          EEXIST,
++	"EXDEV":           EXDEV,
++	"ENODEV":          ENODEV,
++	"ENOTDIR":         ENOTDIR,
++	"EISDIR":          EISDIR,
++	"EINVAL":          EINVAL,
++	"ENFILE":          ENFILE,
++	"EMFILE":          EMFILE,
++	"ENOTTY":          ENOTTY,
++	"EFBIG":           EFBIG,
++	"ENOSPC":          ENOSPC,
++	"ESPIPE":          ESPIPE,
++	"EROFS":           EROFS,
++	"EMLINK":          EMLINK,
++	"EPIPE":           EPIPE,
++	"ENAMETOOLONG":    ENAMETOOLONG,
++	"ENOSYS":          ENOSYS,
++	"EDQUOT":          EDQUOT,
++	"EDOM":            EDOM,
++	"ERANGE":          ERANGE,
++	"EDEADLK":         EDEADLK,
++	"ENOLCK":          ENOLCK,
++	"ENOTEMPTY":       ENOTEMPTY,
++	"ELOOP":           ELOOP,
++	"ENOMSG":          ENOMSG,
++	"EIDRM":           EIDRM,
++	"ECHRNG":          ECHRNG,
++	"EL2NSYNC":        EL2NSYNC,
++	"EL3HLT":          EL3HLT,
++	"EL3RST":          EL3RST,
++	"ELNRNG":          ELNRNG,
++	"EUNATCH":         EUNATCH,
++	"ENOCSI":          ENOCSI,
++	"EL2HLT":          EL2HLT,
++	"EBADE":           EBADE,
++	"EBADR":           EBADR,
++	"EXFULL":          EXFULL,
++	"ENOANO":          ENOANO,
++	"EBADRQC":         EBADRQC,
++	"EBADSLT":         EBADSLT,
++	"EDEADLOCK":       EDEADLOCK,
++	"EBFONT":          EBFONT,
++	"ENOSTR":          ENOSTR,
++	"ENODATA":         ENODATA,
++	"ETIME":           ETIME,
++	"ENOSR":           ENOSR,
++	"ENONET":          ENONET,
++	"ENOPKG":          ENOPKG,
++	"EREMOTE":         EREMOTE,
++	"ENOLINK":         ENOLINK,
++	"EADV":            EADV,
++	"ESRMNT":          ESRMNT,
++	"ECOMM":           ECOMM,
++	"EPROTO":          EPROTO,
++	"EMULTIHOP":       EMULTIHOP,
++	"EDOTDOT":         EDOTDOT,
++	"EBADMSG":         EBADMSG,
++	"EOVERFLOW":       EOVERFLOW,
++	"ENOTUNIQ":        ENOTUNIQ,
++	"EBADFD":          EBADFD,
++	"EREMCHG":         EREMCHG,
++	"ELIBACC":         ELIBACC,
++	"ELIBBAD":         ELIBBAD,
++	"ELIBSCN":         ELIBSCN,
++	"ELIBMAX":         ELIBMAX,
++	"ELIBEXEC":        ELIBEXEC,
++	"EILSEQ":          EILSEQ,
++	"EUSERS":          EUSERS,
++	"ENOTSOCK":        ENOTSOCK,
++	"EDESTADDRREQ":    EDESTADDRREQ,
++	"EMSGSIZE":        EMSGSIZE,
++	"EPROTOTYPE":      EPROTOTYPE,
++	"ENOPROTOOPT":     ENOPROTOOPT,
++	"EPROTONOSUPPORT": EPROTONOSUPPORT,
++	"ESOCKTNOSUPPORT": ESOCKTNOSUPPORT,
++	"EOPNOTSUPP":      EOPNOTSUPP,
++	"EPFNOSUPPORT":    EPFNOSUPPORT,
++	"EAFNOSUPPORT":    EAFNOSUPPORT,
++	"EADDRINUSE":      EADDRINUSE,
++	"EADDRNOTAVAIL":   EADDRNOTAVAIL,
++	"ENETDOWN":        ENETDOWN,
++	"ENETUNREACH":     ENETUNREACH,
++	"ENETRESET":       ENETRESET,
++	"ECONNABORTED":    ECONNABORTED,
++	"ECONNRESET":      ECONNRESET,
++	"ENOBUFS":         ENOBUFS,
++	"EISCONN":         EISCONN,
++	"ENOTCONN":        ENOTCONN,
++	"ESHUTDOWN":       ESHUTDOWN,
++	"ETOOMANYREFS":    ETOOMANYREFS,
++	"ETIMEDOUT":       ETIMEDOUT,
++	"ECONNREFUSED":    ECONNREFUSED,
++	"EHOSTDOWN":       EHOSTDOWN,
++	"EHOSTUNREACH":    EHOSTUNREACH,
++	"EALREADY":        EALREADY,
++	"EINPROGRESS":     EINPROGRESS,
++	"ESTALE":          ESTALE,
++	"ENOTSUP":         ENOTSUP,
++	"ENOMEDIUM":       ENOMEDIUM,
++	"ECANCELED":       ECANCELED,
++	"ELBIN":           ELBIN,
++	"EFTYPE":          EFTYPE,
++	"ENMFILE":         ENMFILE,
++	"EPROCLIM":        EPROCLIM,
++	"ENOSHARE":        ENOSHARE,
++	"ECASECLASH":      ECASECLASH,
++	"EWOULDBLOCK":     EWOULDBLOCK,
++}
+diff --git a/src/time/sys_opensbi.go b/src/time/sys_opensbi.go
+new file mode 100644
+index 0000000000..44fa77d87f
+--- /dev/null
++++ b/src/time/sys_opensbi.go
+@@ -0,0 +1,55 @@
++// Copyright 2011 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi
++// +build opensbi
++
++package time
++
++import (
++	"errors"
++	"syscall"
++)
++
++// for testing: whatever interrupts a sleep
++func interrupt() {
++	// cannot predict pid, don't want to kill group
++}
++
++func open(name string) (uintptr, error) {
++	fd, err := syscall.Open(name, syscall.O_RDONLY)
++	if err != nil {
++		return 0, err
++	}
++	return uintptr(fd), nil
++}
++
++func read(fd uintptr, buf []byte) (int, error) {
++	return syscall.Read(int(fd), buf)
++}
++
++func closefd(fd uintptr) {
++	syscall.Close(int(fd))
++}
++
++func preadn(fd uintptr, buf []byte, off int) error {
++	whence := seekStart
++	if off < 0 {
++		whence = seekEnd
++	}
++	if _, err := syscall.Seek(int(fd), int64(off), whence); err != nil {
++		return err
++	}
++	for len(buf) > 0 {
++		m, err := syscall.Read(int(fd), buf)
++		if m <= 0 {
++			if err == nil {
++				return errors.New("short read")
++			}
++			return err
++		}
++		buf = buf[m:]
++	}
++	return nil
++}
+diff --git a/src/time/zoneinfo_opensbi.go b/src/time/zoneinfo_opensbi.go
+new file mode 100644
+index 0000000000..4ae718c59e
+--- /dev/null
++++ b/src/time/zoneinfo_opensbi.go
+@@ -0,0 +1,142 @@
++// Copyright 2011 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++// Parse Plan 9 timezone(2) files.
++
++package time
++
++import (
++	"runtime"
++	"syscall"
++)
++
++var zoneSources = []string{
++	runtime.GOROOT() + "/lib/time/zoneinfo.zip",
++}
++
++func isSpace(r rune) bool {
++	return r == ' ' || r == '\t' || r == '\n'
++}
++
++// Copied from strings to avoid a dependency.
++func fields(s string) []string {
++	// First count the fields.
++	n := 0
++	inField := false
++	for _, rune := range s {
++		wasInField := inField
++		inField = !isSpace(rune)
++		if inField && !wasInField {
++			n++
++		}
++	}
++
++	// Now create them.
++	a := make([]string, n)
++	na := 0
++	fieldStart := -1 // Set to -1 when looking for start of field.
++	for i, rune := range s {
++		if isSpace(rune) {
++			if fieldStart >= 0 {
++				a[na] = s[fieldStart:i]
++				na++
++				fieldStart = -1
++			}
++		} else if fieldStart == -1 {
++			fieldStart = i
++		}
++	}
++	if fieldStart >= 0 { // Last field might end at EOF.
++		a[na] = s[fieldStart:]
++	}
++	return a
++}
++
++func loadZoneDataPlan9(s string) (l *Location, err error) {
++	f := fields(s)
++	if len(f) < 4 {
++		if len(f) == 2 && f[0] == "GMT" {
++			return UTC, nil
++		}
++		return nil, badData
++	}
++
++	var zones [2]zone
++
++	// standard timezone offset
++	o, err := atoi(f[1])
++	if err != nil {
++		return nil, badData
++	}
++	zones[0] = zone{name: f[0], offset: o, isDST: false}
++
++	// alternate timezone offset
++	o, err = atoi(f[3])
++	if err != nil {
++		return nil, badData
++	}
++	zones[1] = zone{name: f[2], offset: o, isDST: true}
++
++	// transition time pairs
++	var tx []zoneTrans
++	f = f[4:]
++	for i := 0; i < len(f); i++ {
++		zi := 0
++		if i%2 == 0 {
++			zi = 1
++		}
++		t, err := atoi(f[i])
++		if err != nil {
++			return nil, badData
++		}
++		t -= zones[0].offset
++		tx = append(tx, zoneTrans{when: int64(t), index: uint8(zi)})
++	}
++
++	// Committed to succeed.
++	l = &Location{zone: zones[:], tx: tx}
++
++	// Fill in the cache with information about right now,
++	// since that will be the most common lookup.
++	sec, _, _ := now()
++	for i := range tx {
++		if tx[i].when <= sec && (i+1 == len(tx) || sec < tx[i+1].when) {
++			l.cacheStart = tx[i].when
++			l.cacheEnd = omega
++			if i+1 < len(tx) {
++				l.cacheEnd = tx[i+1].when
++			}
++			l.cacheZone = &l.zone[tx[i].index]
++		}
++	}
++
++	return l, nil
++}
++
++func loadZoneFilePlan9(name string) (*Location, error) {
++	b, err := readFile(name)
++	if err != nil {
++		return nil, err
++	}
++	return loadZoneDataPlan9(string(b))
++}
++
++func initLocal() {
++	t, ok := syscall.Getenv("timezone")
++	if ok {
++		if z, err := loadZoneDataPlan9(t); err == nil {
++			localLoc = *z
++			return
++		}
++	} else {
++		if z, err := loadZoneFilePlan9("/adm/timezone/local"); err == nil {
++			localLoc = *z
++			localLoc.name = "Local"
++			return
++		}
++	}
++
++	// Fall back to UTC.
++	localLoc.name = "UTC"
++}
+-- 
+2.32.0
+
