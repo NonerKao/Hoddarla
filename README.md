@@ -1,6 +1,6 @@
-# Hoddarla 專案：鐵人賽第二天
+# Hoddarla 專案：鐵人賽第三天
 
-> 還在打通工具鏈的建置階段 ...
+> 可以生成可執行檔了！
 
 ## 實驗步驟
 
@@ -9,6 +9,7 @@ git clone git@github.com:NonerKao/Hoddarla.git
 cd Hoddarla
 make go-env
 . .hdlarc
+make -C ethanol
 ```
 
-之後，編成的 Golang 工具鏈，可以初步認識 `opensbi/riscv64` 系統組合，但還有許多未定義符號待處理。
+之後，可以在 ethanol 資料夾下觀察到 `ethanol` 可執行檔的產生。但為了讓它真正跑起來，我們還需要繼續努力。
