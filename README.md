@@ -1,6 +1,4 @@
-# Hoddarla 專案：鐵人賽第三天
-
-> 可以生成可執行檔了！
+# Hoddarla 專案：鐵人賽第四天
 
 ## 實驗步驟
 
@@ -9,7 +7,7 @@ git clone git@github.com:NonerKao/Hoddarla.git
 cd Hoddarla
 make go-env
 . .hdlarc
-make -C ethanol
+make clean && make
 ```
 
-之後，可以在 ethanol 資料夾下觀察到 `ethanol` 可執行檔的產生。但為了讓它真正跑起來，我們還需要繼續努力。
+今天就可以正式跑起來了，但是只有一個 `H` 字母不斷洗頻。可以使用 `Ctrl+A` `X` 中止 QEMU。
