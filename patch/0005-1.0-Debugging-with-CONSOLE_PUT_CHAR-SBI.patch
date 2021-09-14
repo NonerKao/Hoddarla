@@ -1,0 +1,102 @@
+From e4e3d7df77ac6ff064dce55711c2015788a03e94 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Wed, 21 Jul 2021 23:04:06 +0800
+Subject: [PATCH 05/17] 1.0 Debugging with CONSOLE_PUT_CHAR SBI
+
+---
+ src/cmd/internal/obj/riscv/obj.go |  1 +
+ src/runtime/opensbi/csr.h         |  5 +++-
+ src/runtime/rt0_opensbi_riscv64.s | 47 +++++++++++++++++++++++++++++++
+ 3 files changed, 52 insertions(+), 1 deletion(-)
+
+diff --git a/src/cmd/internal/obj/riscv/obj.go b/src/cmd/internal/obj/riscv/obj.go
+index e108931d60..f56aa4e244 100644
+--- a/src/cmd/internal/obj/riscv/obj.go
++++ b/src/cmd/internal/obj/riscv/obj.go
+@@ -1476,6 +1476,7 @@ var encodings = [ALAST & obj.AMask]encoding{
+ 	AEBREAK & obj.AMask: iIEncoding,
+ 	AWFI & obj.AMask:    iIEncoding,
+ 	ACSRRW & obj.AMask:  iIEncoding,
++	ACSRRS & obj.AMask:  iIEncoding,
+ 
+ 	// Escape hatch
+ 	AWORD & obj.AMask: rawEncoding,
+diff --git a/src/runtime/opensbi/csr.h b/src/runtime/opensbi/csr.h
+index 40edffbba1..2ee6d54498 100644
+--- a/src/runtime/opensbi/csr.h
++++ b/src/runtime/opensbi/csr.h
+@@ -3,4 +3,7 @@
+ // license that can be found in the LICENSE file.
+ 
+ // CSR encoding
+-#define CSR_STVEC     $0x105
++#define CSR_STVEC	$0x105
++#define CSR_SEPC	$0x141
++#define CSR_SCAUSE	$0x142
++#define CSR_STVAL	$0x143
+diff --git a/src/runtime/rt0_opensbi_riscv64.s b/src/runtime/rt0_opensbi_riscv64.s
+index 0be4dba7d8..c65afa5c79 100644
+--- a/src/runtime/rt0_opensbi_riscv64.s
++++ b/src/runtime/rt0_opensbi_riscv64.s
+@@ -5,11 +5,58 @@
+ #include "textflag.h"
+ #include "opensbi/csr.h"
+ 
++// the input is in A0
++TEXT dump(SB),NOSPLIT|NOFRAME,$0
++	MOV	A0, A4
++	ADDI	$15, X0, A1
++loop:
++	// recover the input
++	MOV	A4, A0
++	// calculate the lowest bit to preserve in A0
++	SLLI    $2, A1, A2
++	SRL	A2, A0, A3
++	// we only need 4 bits
++	ADDI	$0xF, X0, A2
++	AND	A3, A2, A0
++
++	// compare to 9
++	ADDI	$9, X0, A2
++	BLT     A2, A0, hexa
++hexn:	// number
++	ADD     $48, A0, A0
++	JMP	hex
++hexa:	// alphabet
++	ADD     $87, A0, A0
++hex:
++	// print: A0 is already done
++	MOV     $1, A7
++	MOV	$0, A6
++	ECALL
++
++	// the end of loop
++	ADDI	$-1, A1, A1
++	BGE	A1, X0, loop
++
++	// newline
++	MOV	$10, A0
++	MOV     $1, A7
++	MOV	$0, A6
++	ECALL
++
++	RET
++
+ TEXT early_halt(SB),NOSPLIT|NOFRAME,$0
+ 	MOV	$0x49, A0
+ 	MOV	$1, A7
+ 	MOV	$0, A6
+ 	ECALL
++	CSRRS	CSR_SCAUSE, X0, A0
++	CALL	dump(SB)
++	CSRRS	CSR_STVAL, X0, A0
++	CALL	dump(SB)
++	CSRRS	CSR_SEPC, X0, A0
++	CALL	dump(SB)
++
+ 	WFI
+ 	JMP	early_halt(SB)
+ 
+-- 
+2.32.0
+
