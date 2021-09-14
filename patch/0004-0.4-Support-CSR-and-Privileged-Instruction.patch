@@ -1,0 +1,77 @@
+From 2f625f37cbc9751c3f05bacd964d270d0851825e Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Wed, 21 Jul 2021 23:04:06 +0800
+Subject: [PATCH 04/16] 0.4 Support CSR and Privileged Instruction
+
+---
+ src/cmd/internal/obj/riscv/obj.go |  4 +++-
+ src/runtime/opensbi/csr.h         |  6 ++++++
+ src/runtime/rt0_opensbi_riscv64.s | 11 +++++++++++
+ 3 files changed, 20 insertions(+), 1 deletion(-)
+ create mode 100644 src/runtime/opensbi/csr.h
+
+diff --git a/src/cmd/internal/obj/riscv/obj.go b/src/cmd/internal/obj/riscv/obj.go
+index fafde64062..1f92f10316 100644
+--- a/src/cmd/internal/obj/riscv/obj.go
++++ b/src/cmd/internal/obj/riscv/obj.go
+@@ -1474,6 +1474,8 @@ var encodings = [ALAST & obj.AMask]encoding{
+ 	// 3.2.1: Environment Call and Breakpoint
+ 	AECALL & obj.AMask:  iIEncoding,
+ 	AEBREAK & obj.AMask: iIEncoding,
++	AWFI & obj.AMask:    iIEncoding,
++	ACSRRW & obj.AMask:  iIEncoding,
+ 
+ 	// Escape hatch
+ 	AWORD & obj.AMask: rawEncoding,
+@@ -1920,7 +1922,7 @@ func instructionsForProg(p *obj.Prog) []*instruction {
+ 		ins.funct7 = 2
+ 		ins.rd, ins.rs1, ins.rs2 = uint32(p.RegTo2), uint32(p.To.Reg), uint32(p.From.Reg)
+ 
+-	case AECALL, AEBREAK, ARDCYCLE, ARDTIME, ARDINSTRET:
++	case AWFI, AECALL, AEBREAK, ARDCYCLE, ARDTIME, ARDINSTRET:
+ 		insEnc := encode(p.As)
+ 		if p.To.Type == obj.TYPE_NONE {
+ 			ins.rd = REG_ZERO
+diff --git a/src/runtime/opensbi/csr.h b/src/runtime/opensbi/csr.h
+new file mode 100644
+index 0000000000..40edffbba1
+--- /dev/null
++++ b/src/runtime/opensbi/csr.h
+@@ -0,0 +1,6 @@
++// Copyright 2020 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++// CSR encoding
++#define CSR_STVEC     $0x105
+diff --git a/src/runtime/rt0_opensbi_riscv64.s b/src/runtime/rt0_opensbi_riscv64.s
+index c0de6b6716..0be4dba7d8 100644
+--- a/src/runtime/rt0_opensbi_riscv64.s
++++ b/src/runtime/rt0_opensbi_riscv64.s
+@@ -3,12 +3,23 @@
+ // license that can be found in the LICENSE file.
+ 
+ #include "textflag.h"
++#include "opensbi/csr.h"
++
++TEXT early_halt(SB),NOSPLIT|NOFRAME,$0
++	MOV	$0x49, A0
++	MOV	$1, A7
++	MOV	$0, A6
++	ECALL
++	WFI
++	JMP	early_halt(SB)
+ 
+ TEXT _rt0_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
+ 	MOV	$0x48, A0
+ 	MOV	$1, A7
+ 	MOV	$0, A6
+ 	ECALL
++	MOV	$early_halt(SB), A0
++	CSRRW	CSR_STVEC, A0, X0
+ 	MOV	0(X2), A0	// argc
+ 	ADD	$8, X2, A1	// argv
+ 	JMP	main(SB)
+-- 
+2.32.0
+
