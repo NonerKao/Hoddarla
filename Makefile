@@ -6,8 +6,8 @@ run:
 		-M virt \
 		-m 512M \
 		-nographic \
-		-kernel ethanol/goto/goto.bin \
-		-append "ethanol arg1 arg2 env1=1 env2=abc" \
+		-bios misc/opensbi-0.9/build/platform/generic/firmware/fw_jump.bin \
+		-device loader,file=ethanol/goto/goto.bin,addr=0x80200000 \
 		-device loader,file=ethanol/ethanol,addr=0x80201000,force-raw=on $(EXTRA_FLAGS)
 
 .PHONY: env run qemu clean allclean debug
@@ -51,6 +51,15 @@ stamps/toolchain-env:
 	rm -fr riscv64--musl--bleeding-edge-2020.08-1.tar.bz2
 	touch $@
 
+opensbi: stamps/opensbi-env
+stamps/opensbi-env:
+	cd ./misc && \
+		wget https://github.com/riscv-software-src/opensbi/archive/refs/tags/v0.9.tar.gz -O opensbi-0.9.tar.gz && \
+		tar xvzf opensbi-0.9.tar.gz
+	cd ./misc/opensbi-0.9 && \
+		CROSS_COMPILE=riscv64-buildroot-linux-musl- make PLATFORM=generic
+	touch $@
+
 env: stamps/go-env stamps/toolchain-env stamps/qemu-env
 
 clean:
@@ -58,4 +67,4 @@ clean:
 	rm -fr stamps/*
 
 allclean: clean
-	rm -fr toolchain go misc/qemu* stamps/*
+	rm -fr toolchain go misc/qemu* misc/opensbi* stamps/*
