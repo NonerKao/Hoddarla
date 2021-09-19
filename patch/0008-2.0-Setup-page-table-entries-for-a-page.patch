@@ -1,0 +1,58 @@
+From c726394b891efbeb44ab44b8aa14224b258f1414 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Mon, 26 Jul 2021 23:05:46 +0800
+Subject: [PATCH 08/17] 2.0 Setup page table entries for a page
+
+---
+ src/runtime/opensbi/csr.h         |  1 +
+ src/runtime/rt0_opensbi_riscv64.s | 26 ++++++++++++++++++++++++++
+ 2 files changed, 27 insertions(+)
+
+diff --git a/src/runtime/opensbi/csr.h b/src/runtime/opensbi/csr.h
+index 2ee6d54498..bfb7f7a880 100644
+--- a/src/runtime/opensbi/csr.h
++++ b/src/runtime/opensbi/csr.h
+@@ -7,3 +7,4 @@
+ #define CSR_SEPC	$0x141
+ #define CSR_SCAUSE	$0x142
+ #define CSR_STVAL	$0x143
++#define CSR_SATP	$0x180
+diff --git a/src/runtime/rt0_opensbi_riscv64.s b/src/runtime/rt0_opensbi_riscv64.s
+index 5676184343..7ce096cfd4 100644
+--- a/src/runtime/rt0_opensbi_riscv64.s
++++ b/src/runtime/rt0_opensbi_riscv64.s
+@@ -79,5 +79,31 @@ zeroize:
+ 	ADD	$8, T0, T0
+ 	BLT	T0, T1, zeroize
+ 
++	// TEST: 'A' at 0x93779bdf
++	MOV	$0x93779bdf, T0
++	MOV	ZERO, T1
++	ADD	$0x41, T1, T1
++	SB	T1, 0(T0)
++	// Level 3
++	MOV	$0x80102bc8, T0
++	MOV	ZERO, T1
++	ADD	$0x24dde40f, T1, T1
++	SD	T1, 0(T0)
++	// Level 2
++	MOV	$0x801014d0, T0
++	MOV	ZERO, T1
++	ADD	$0x20040801, T1, T1
++	SD	T1, 0(T0)
++	// Level 1
++	MOV	$0x80100800, T0
++	MOV	ZERO, T1
++	ADD	$0x20040401, T1, T1
++	SD	T1, 0(T0)
++	// SATP
++	MOV	$0x80000000, T0
++	SLL	$32, T0, T0
++	ADD	$0x80100, T0, T0
++	CSRRW	CSR_SATP, T0, X0
++
+ 	MOV	$runtime·rt0_go(SB), T0
+ 	JALR	ZERO, T0
+-- 
+2.32.0
+

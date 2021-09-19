@@ -1,0 +1,28 @@
+From 37f63e6edbf1285332cd6ef699995d946265bcfe Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Wed, 21 Jul 2021 23:04:06 +0800
+Subject: [PATCH 06/17] 1.2 Experimentally initialize stack pointer
+
+---
+ src/runtime/rt0_opensbi_riscv64.s | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/runtime/rt0_opensbi_riscv64.s b/src/runtime/rt0_opensbi_riscv64.s
+index c65afa5c79..18f20e1b61 100644
+--- a/src/runtime/rt0_opensbi_riscv64.s
++++ b/src/runtime/rt0_opensbi_riscv64.s
+@@ -67,10 +67,9 @@ TEXT _rt0_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
+ 	ECALL
+ 	MOV	$early_halt(SB), A0
+ 	CSRRW	CSR_STVEC, A0, X0
+-	MOV	0(X2), A0	// argc
+-	ADD	$8, X2, A1	// argv
+ 	JMP	main(SB)
+ 
+ TEXT main(SB),NOSPLIT|NOFRAME,$0
++	MOV     $0x90000000, X2
+ 	MOV	$runtime·rt0_go(SB), T0
+ 	JALR	ZERO, T0
+-- 
+2.32.0
+
