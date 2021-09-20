@@ -1,0 +1,152 @@
+From 96cbcfc064863036ebd68699e776b1f343747e74 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Sat, 7 Aug 2021 21:22:22 +0800
+Subject: [PATCH 09/17] 2.1 Start RISC-V MMU
+
+---
+ src/cmd/internal/obj/riscv/obj.go | 13 ++++-----
+ src/runtime/indirect_opensbi.go   | 13 +++++++++
+ src/runtime/opensbi/pivot.go      |  7 +++++
+ src/runtime/rt0_opensbi_riscv64.s | 44 ++++++++++++++++++-------------
+ 4 files changed, 53 insertions(+), 24 deletions(-)
+ create mode 100644 src/runtime/indirect_opensbi.go
+ create mode 100644 src/runtime/opensbi/pivot.go
+
+diff --git a/src/cmd/internal/obj/riscv/obj.go b/src/cmd/internal/obj/riscv/obj.go
+index f56aa4e244..42ac5b9674 100644
+--- a/src/cmd/internal/obj/riscv/obj.go
++++ b/src/cmd/internal/obj/riscv/obj.go
+@@ -1472,11 +1472,12 @@ var encodings = [ALAST & obj.AMask]encoding{
+ 	// Privileged ISA
+ 
+ 	// 3.2.1: Environment Call and Breakpoint
+-	AECALL & obj.AMask:  iIEncoding,
+-	AEBREAK & obj.AMask: iIEncoding,
+-	AWFI & obj.AMask:    iIEncoding,
+-	ACSRRW & obj.AMask:  iIEncoding,
+-	ACSRRS & obj.AMask:  iIEncoding,
++	AECALL & obj.AMask:     iIEncoding,
++	AEBREAK & obj.AMask:    iIEncoding,
++	AWFI & obj.AMask:       iIEncoding,
++	ACSRRW & obj.AMask:     iIEncoding,
++	ACSRRS & obj.AMask:     iIEncoding,
++	ASFENCEVMA & obj.AMask: iIEncoding,
+ 
+ 	// Escape hatch
+ 	AWORD & obj.AMask: rawEncoding,
+@@ -1923,7 +1924,7 @@ func instructionsForProg(p *obj.Prog) []*instruction {
+ 		ins.funct7 = 2
+ 		ins.rd, ins.rs1, ins.rs2 = uint32(p.RegTo2), uint32(p.To.Reg), uint32(p.From.Reg)
+ 
+-	case AWFI, AECALL, AEBREAK, ARDCYCLE, ARDTIME, ARDINSTRET:
++	case AWFI, ASFENCEVMA, AECALL, AEBREAK, ARDCYCLE, ARDTIME, ARDINSTRET:
+ 		insEnc := encode(p.As)
+ 		if p.To.Type == obj.TYPE_NONE {
+ 			ins.rd = REG_ZERO
+diff --git a/src/runtime/indirect_opensbi.go b/src/runtime/indirect_opensbi.go
+new file mode 100644
+index 0000000000..0cf5c52d46
+--- /dev/null
++++ b/src/runtime/indirect_opensbi.go
+@@ -0,0 +1,13 @@
++package runtime
++
++import (
++	"runtime/opensbi"
++	"unsafe"
++)
++
++var AddrOffset uintptr
++
++func setAddrOffset() {
++	opensbi.LoadAddr = uintptr(unsafe.Pointer(&opensbi.Pivot))
++	AddrOffset = opensbi.LinkAddr - opensbi.LoadAddr
++}
+diff --git a/src/runtime/opensbi/pivot.go b/src/runtime/opensbi/pivot.go
+new file mode 100644
+index 0000000000..207c5506e7
+--- /dev/null
++++ b/src/runtime/opensbi/pivot.go
+@@ -0,0 +1,7 @@
++package opensbi
++
++import "unsafe"
++
++var Pivot uintptr
++var LoadAddr uintptr
++var LinkAddr = uintptr(unsafe.Pointer(&Pivot))
+diff --git a/src/runtime/rt0_opensbi_riscv64.s b/src/runtime/rt0_opensbi_riscv64.s
+index 7ce096cfd4..80893e68c7 100644
+--- a/src/runtime/rt0_opensbi_riscv64.s
++++ b/src/runtime/rt0_opensbi_riscv64.s
+@@ -65,12 +65,6 @@ TEXT _rt0_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
+ 	MOV	$1, A7
+ 	MOV	$0, A6
+ 	ECALL
+-	MOV	$early_halt(SB), A0
+-	CSRRW	CSR_STVEC, A0, X0
+-	JMP	main(SB)
+-
+-TEXT main(SB),NOSPLIT|NOFRAME,$0
+-	MOV     $0x90000000, X2
+ 
+ 	MOV	$runtime·bss(SB), T0
+ 	MOV	$runtime·enoptrbss(SB), T1
+@@ -79,20 +73,26 @@ zeroize:
+ 	ADD	$8, T0, T0
+ 	BLT	T0, T1, zeroize
+ 
+-	// TEST: 'A' at 0x93779bdf
+-	MOV	$0x93779bdf, T0
+-	MOV	ZERO, T1
+-	ADD	$0x41, T1, T1
+-	SB	T1, 0(T0)
+-	// Level 3
+-	MOV	$0x80102bc8, T0
+-	MOV	ZERO, T1
+-	ADD	$0x24dde40f, T1, T1
+-	SD	T1, 0(T0)
++	JMP	relocate(SB)
++
++TEXT relocate(SB),NOSPLIT|NOFRAME,$0
++	// setup stvec for enabling VA
++	MOV	$_rt1_riscv64_opensbi(SB), A0
++	CALL	runtime·setAddrOffset(SB)
++	MOV	$runtime·AddrOffset(SB), A1
++	LD	0(A1), A1
++	ADD	A0, A1, A0
++	CSRRW	CSR_STVEC, A0, X0
++
++	// setup SP in VA
++	MOV     $0x80202000, X2
++	ADD	X2, A1, X2
++
++	// setup page table
+ 	// Level 2
+-	MOV	$0x801014d0, T0
++	MOV	$0x80101000, T0
+ 	MOV	ZERO, T1
+-	ADD	$0x20040801, T1, T1
++	ADD	$0x2008000f, T1, T1
+ 	SD	T1, 0(T0)
+ 	// Level 1
+ 	MOV	$0x80100800, T0
+@@ -103,7 +103,15 @@ zeroize:
+ 	MOV	$0x80000000, T0
+ 	SLL	$32, T0, T0
+ 	ADD	$0x80100, T0, T0
++	SFENCEVMA
+ 	CSRRW	CSR_SATP, T0, X0
+ 
++	// never reach here
++	NOP
++	EBREAK
++
++TEXT _rt1_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
++	MOV	$early_halt(SB), A0
++	CSRRW	CSR_STVEC, A0, X0
+ 	MOV	$runtime·rt0_go(SB), T0
+ 	JALR	ZERO, T0
+-- 
+2.32.0
+
