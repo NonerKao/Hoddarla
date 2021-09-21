@@ -13,7 +13,7 @@ run:
 .PHONY: env run qemu clean allclean debug
 debug:
 	$(shell misc/mkgdbrc.sh > /tmp/gdbrc)
-	riscv64-linux-gnu-gdb -x /tmp/gdbrc
+	riscv64-linux-gnu-gdb -x /tmp/gdbrc -ex 'source go/src/runtime/runtime-gdb.py'
 
 patch: stamps/patch
 stamps/patch: ./go

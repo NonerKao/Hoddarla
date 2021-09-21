@@ -1,0 +1,51 @@
+From 2351521ab994e95cd783d3d7ede768c69fed6222 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Sat, 7 Aug 2021 22:53:40 +0800
+Subject: [PATCH 10/17] 2.2 Debug Virtual Memory
+
+---
+ src/runtime/os_opensbi.go         |  8 +++++++-
+ src/runtime/sys_opensbi_riscv64.s | 11 +++++++++++
+ 2 files changed, 18 insertions(+), 1 deletion(-)
+ create mode 100644 src/runtime/sys_opensbi_riscv64.s
+
+diff --git a/src/runtime/os_opensbi.go b/src/runtime/os_opensbi.go
+index c6b44995da..af9979a16b 100644
+--- a/src/runtime/os_opensbi.go
++++ b/src/runtime/os_opensbi.go
+@@ -15,8 +15,14 @@ func exit(code int32) {
+ 	return
+ }
+ 
++func write2(p uintptr)
+ func write1(fd uintptr, p unsafe.Pointer, n int32) int32 {
+-	return 0
++	if fd == 2 || fd == 1 {
++		for i := uintptr(0); i < uintptr(n); i++ {
++			write2(uintptr(p) + i)
++		}
++	}
++	return n
+ }
+ 
+ // Stubs so tests can link correctly. These should never be called.
+diff --git a/src/runtime/sys_opensbi_riscv64.s b/src/runtime/sys_opensbi_riscv64.s
+new file mode 100644
+index 0000000000..ddf3897ffe
+--- /dev/null
++++ b/src/runtime/sys_opensbi_riscv64.s
+@@ -0,0 +1,11 @@
++#include "textflag.h"
++#include "go_asm.h"
++
++// func write2(p uintptr)
++TEXT runtime·write2(SB),NOSPLIT|NOFRAME,$0-8
++	MOV	p+0(FP), A0
++	LB	0(A0), A0
++	MOV	$1, A7
++        MOV	$0, A6
++        ECALL
++        RET
+-- 
+2.32.0
+
