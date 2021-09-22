@@ -1,9 +1,9 @@
-# Hoddarla 專案：鐵人賽第十二天
+# Hoddarla 專案：鐵人賽第十三天
 
 ## 實驗步驟
 
-執行之後會顯示 `fatalthrow` 的回溯訊息。
-之後可以使用 `Ctrl+A` `X` 中止 QEMU。
+本日的 patch 之後，顯示 `fatalthrow` 的回溯訊息之前，可以看見記憶體起始位址與大小。
+之後可以使用 `Ctrl+A` `X` 中止 QEMU。（可以調整 QEMU 參數控制不同的記憶體大小）
 
 也可以透過 `make EXTRA_FLAGS='-S -s'` 來將除錯埠設定在本機的 1234。
 由於虛擬記憶體已經開啟，建議使用搭配的 `make debug` 來除錯。

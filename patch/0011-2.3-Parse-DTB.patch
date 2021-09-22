@@ -1,0 +1,304 @@
+From a130f14d47542f066e1855b797009f93b39f8325 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Sun, 8 Aug 2021 23:38:08 +0800
+Subject: [PATCH 11/17] 2.3 Parse DTB
+
+---
+ src/runtime/ethanol/README                | 28 +++++++
+ src/runtime/{opensbi => ethanol}/csr.h    |  0
+ src/runtime/ethanol/fdt.go                | 89 +++++++++++++++++++++++
+ src/runtime/{opensbi => ethanol}/pivot.go |  2 +-
+ src/runtime/indirect_opensbi.go           |  6 +-
+ src/runtime/os_opensbi.go                 |  8 +-
+ src/runtime/rt0_opensbi_riscv64.s         | 52 +++++++++++--
+ 8 files changed, 197 insertions(+), 11 deletions(-)
+ create mode 100644 src/runtime/ethanol/README
+ rename src/runtime/{opensbi => ethanol}/csr.h (100%)
+ create mode 100644 src/runtime/ethanol/fdt.go
+ rename src/runtime/{opensbi => ethanol}/pivot.go (86%)
+
+diff --git a/src/runtime/ethanol/README b/src/runtime/ethanol/README
+new file mode 100644
+index 0000000000..6f14d86fd1
+--- /dev/null
++++ b/src/runtime/ethanol/README
+@@ -0,0 +1,28 @@
++* Virtual Memory Map
++
+++---------------------+---------------------+---------------------+
++| Start Address       | Size                | Area Description    |
+++---------------------+---------------------+---------------------+
++| ffff ffc0 0000 0000 | ?                   | Ethanol base        |
+++---------------------+---------------------+---------------------+
++|                     |                     |   ...               |
+++---------------------+---------------------+---------------------+
++| ffff ffff ffe0 0000 | 2MB                 | Misc.               |
++|                     |                     |   FDT_BASE          |
+++---------------------+---------------------+---------------------+
++
++* Physical Memory Map
++
+++---------------------+---------------------+---------------------+
++| Start Address       | Size                | Area Description    |
+++---------------------+---------------------+---------------------+
++| 80200000            | 8KB                 | goto jumper         |
++|                     |                     | early stack         |
+++---------------------+---------------------+---------------------+
++| 80202000            | ?                   | Ethanol base        |
+++---------------------+---------------------+---------------------+
++|                     |                     |   ...               |
+++---------------------+---------------------+---------------------+
++| Max-2MB             | 2MB                 | Misc.               |
++|                     |                     |   FDT_BASE          |
+++---------------------+---------------------+---------------------+
+diff --git a/src/runtime/opensbi/csr.h b/src/runtime/ethanol/csr.h
+similarity index 100%
+rename from src/runtime/opensbi/csr.h
+rename to src/runtime/ethanol/csr.h
+diff --git a/src/runtime/ethanol/fdt.go b/src/runtime/ethanol/fdt.go
+new file mode 100644
+index 0000000000..7030fa034f
+--- /dev/null
++++ b/src/runtime/ethanol/fdt.go
+@@ -0,0 +1,89 @@
++package ethanol
++
++const (
++	FDT_BEGIN_NODE = 1 + iota
++	FDT_END_NODE
++	FDT_PROP
++	FDT_NOP
++	FDT_END = 9
++)
++
++func memoryNotFound() (uint, uint) {
++	print("This FDT contains no node with attribute \"reg\"!\n")
++	print("Assuming 256MB Memory: 0x80000000 - 0x90000000\n")
++	return 0x80000000, 0x10000000
++}
++
++// We don't have any advanced features yet, so
++// hardcoded to search for "memory" and "reg"
++func GetMemoryInfo(fdt string) (uint, uint) {
++	nodeOffset := getWord(fdt, 8)
++	strOffset := getWord(fdt, 12)
++	// find "reg" directly
++	regStrOffset, found := getStrOffset(fdt, "reg", strOffset, getWord(fdt, 32))
++	if !found {
++		return memoryNotFound()
++	}
++
++	// TODO: abstract this better later.  Technically it is wrong.
++	getReg := false
++	for i := nodeOffset; i < nodeOffset+getWord(fdt, 36); i += 4 {
++		if getWord(fdt, i) == FDT_BEGIN_NODE {
++			i += 4
++			if fdtsubstr(fdt, "memory", i) {
++				for fdt[i] != 0 {
++					i++
++				}
++				i = i / 4 * 4
++				getReg = true
++			}
++		} else if getWord(fdt, i) == FDT_PROP && getReg {
++			if getWord(fdt, i+8) == regStrOffset {
++				return getWord(fdt, i+16), getWord(fdt, i+24)
++			}
++		}
++	}
++	return memoryNotFound()
++}
++
++func getStrOffset(fdt, s string, so, size uint) (uint, bool) {
++	for i := so; i < so+size; i++ {
++		if fdt[i] == 0 {
++			continue
++		}
++		if fdt[i] != s[0] {
++			for fdt[i+1] != 0 {
++				i++
++			}
++			continue
++		}
++		found := true
++		for j := uint(1); j < uint(len(s)); j++ {
++			if fdt[i+j] != s[j] {
++				found = false
++				break
++			}
++		}
++		if found {
++			return i - so, true
++		}
++	}
++	return 0, false
++}
++
++func getWord(fdt string, offset uint) uint {
++	var ret uint
++	for i := uint(0); i < 4; i++ {
++		ret += uint(fdt[offset+i]) << ((3 - i) * 8)
++	}
++	return ret
++}
++
++func fdtsubstr(fdt, s string, o uint) bool {
++	for i := uint(0); i < uint(len(s)); i++ {
++		if fdt[o+i] != s[i] {
++			return false
++		}
++	}
++	return true
++}
+diff --git a/src/runtime/opensbi/pivot.go b/src/runtime/ethanol/pivot.go
+similarity index 86%
+rename from src/runtime/opensbi/pivot.go
+rename to src/runtime/ethanol/pivot.go
+index 207c5506e7..0a056ab7f3 100644
+--- a/src/runtime/opensbi/pivot.go
++++ b/src/runtime/ethanol/pivot.go
+@@ -1,4 +1,4 @@
+-package opensbi
++package ethanol
+ 
+ import "unsafe"
+ 
+diff --git a/src/runtime/indirect_opensbi.go b/src/runtime/indirect_opensbi.go
+index 0cf5c52d46..6677c306b8 100644
+--- a/src/runtime/indirect_opensbi.go
++++ b/src/runtime/indirect_opensbi.go
+@@ -1,13 +1,13 @@
+ package runtime
+ 
+ import (
+-	"runtime/opensbi"
++	"runtime/ethanol"
+ 	"unsafe"
+ )
+ 
+ var AddrOffset uintptr
+ 
+ func setAddrOffset() {
+-	opensbi.LoadAddr = uintptr(unsafe.Pointer(&opensbi.Pivot))
+-	AddrOffset = opensbi.LinkAddr - opensbi.LoadAddr
++	ethanol.LoadAddr = uintptr(unsafe.Pointer(&ethanol.Pivot))
++	AddrOffset = ethanol.LinkAddr - ethanol.LoadAddr
+ }
+diff --git a/src/runtime/os_opensbi.go b/src/runtime/os_opensbi.go
+index af9979a16b..128fd8b570 100644
+--- a/src/runtime/os_opensbi.go
++++ b/src/runtime/os_opensbi.go
+@@ -8,6 +8,7 @@
+ package runtime
+ 
+ import (
++	"runtime/ethanol"
+ 	"unsafe"
+ )
+ 
+@@ -107,10 +108,15 @@ func unminit() {
+ func mdestroy(mp *m) {
+ }
+ 
++var fdt string
++
+ func osinit() {
+ 	ncpu = 1
+ 	getg().m.procid = 2
+-	physPageSize = 64 * 1024
++	physPageSize = 4096
++	memBase, memSize := ethanol.GetMemoryInfo(fdt)
++	print("Memory Base:", memBase, "\n")
++	print("Memory Size:", memSize, "\n")
+ }
+ 
+ // wasm has no signals
+diff --git a/src/runtime/rt0_opensbi_riscv64.s b/src/runtime/rt0_opensbi_riscv64.s
+index 80893e68c7..84eff96a16 100644
+--- a/src/runtime/rt0_opensbi_riscv64.s
++++ b/src/runtime/rt0_opensbi_riscv64.s
+@@ -3,7 +3,7 @@
+ // license that can be found in the LICENSE file.
+ 
+ #include "textflag.h"
+-#include "opensbi/csr.h"
++#include "ethanol/csr.h"
+ 
+ // the input is in A0
+ TEXT dump(SB),NOSPLIT|NOFRAME,$0
+@@ -60,12 +60,36 @@ TEXT early_halt(SB),NOSPLIT|NOFRAME,$0
+ 	WFI
+ 	JMP	early_halt(SB)
+ 
+-TEXT _rt0_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
+-	MOV	$0x48, A0
+-	MOV	$1, A7
+-	MOV	$0, A6
+-	ECALL
++TEXT setupFDT(SB),NOSPLIT|NOFRAME,$0
++	// Move DTB from T0 to T1, totally T2 bytes
++	MOV	A1, T0
++	MOV	$runtime·end(SB), T1
++	LBU	4(T0), T2
++	SLL	$8, T2, T2
++	LBU	5(T0), T3
++	ADD	T2, T3, T2
++	SLL	$8, T2, T2
++	LBU	6(T0), T3
++	ADD	T2, T3, T2
++	SLL	$8, T2, T2
++	LBU	7(T0), T3
++	ADD	T2, T3, T2
++	// format FDT as string part 1: address and length
++	MOV	$runtime·fdt(SB), T3
++	MOV	T1, 0(T3)
++	MOV	T2, 8(T3)
++
++move_dtb:
++	LBU	0(T0), T4
++	SB	T4, 0(T1)
++	ADD	$1, T0, T0
++	ADD	$1, T1, T1
++	ADD	$-1, T2, T2
++	BGT	T2, ZERO, move_dtb
++
++	RET
+ 
++TEXT clearBSS(SB),NOSPLIT|NOFRAME,$0
+ 	MOV	$runtime·bss(SB), T0
+ 	MOV	$runtime·enoptrbss(SB), T1
+ zeroize:
+@@ -73,6 +97,11 @@ zeroize:
+ 	ADD	$8, T0, T0
+ 	BLT	T0, T1, zeroize
+ 
++	RET
++
++TEXT _rt0_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
++	CALL	clearBSS(SB)
++	CALL	setupFDT(SB)
+ 	JMP	relocate(SB)
+ 
+ TEXT relocate(SB),NOSPLIT|NOFRAME,$0
+@@ -111,7 +140,18 @@ TEXT relocate(SB),NOSPLIT|NOFRAME,$0
+ 	EBREAK
+ 
+ TEXT _rt1_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
++	// Trap vector for debugging
+ 	MOV	$early_halt(SB), A0
+ 	CSRRW	CSR_STVEC, A0, X0
++
++	// format FDT as string part2: relocate address
++	MOV	$runtime·fdt(SB), T3
++	MOV	0(T3), T1
++	MOV	$runtime·AddrOffset(SB), T2
++	LD	0(T2), T2
++	ADD	T1, T2, T2
++	MOV	T2, 0(T3)
++
++	// General Golang entry
+ 	MOV	$runtime·rt0_go(SB), T0
+ 	JALR	ZERO, T0
+-- 
+2.32.0
+
