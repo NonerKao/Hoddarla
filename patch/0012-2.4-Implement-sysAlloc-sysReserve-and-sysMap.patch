@@ -1,0 +1,587 @@
+From 6bfc93ba5b726935927b86aa3ebc1ff4906da052 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Sun, 15 Aug 2021 12:03:43 +0800
+Subject: [PATCH 12/17] 2.4 Implement sysAlloc, sysReserve and sysMap
+
+---
+ src/runtime/ethanol/README        |  34 ++++++---
+ src/runtime/ethanol/config.h      |  11 +++
+ src/runtime/ethanol/early_mm.go   |  74 +++++++++++++++++++
+ src/runtime/ethanol/fdt.go        |   4 +-
+ src/runtime/ethanol/fdt.s         |  23 ------
+ src/runtime/ethanol/misc.s        |  13 ++++
+ src/runtime/ethanol/pivot.go      |   7 --
+ src/runtime/indirect_opensbi.go   |  13 ----
+ src/runtime/mem_opensbi.go        |  93 +++++++++++++++++++++++-
+ src/runtime/os_opensbi.go         |   8 +-
+ src/runtime/rt0_opensbi_riscv64.s | 117 ++++++++++++++++++++++--------
+ 11 files changed, 310 insertions(+), 88 deletions(-)
+ create mode 100644 src/runtime/ethanol/config.h
+ create mode 100644 src/runtime/ethanol/early_mm.go
+ delete mode 100644 src/runtime/ethanol/fdt.s
+ create mode 100644 src/runtime/ethanol/misc.s
+ delete mode 100644 src/runtime/ethanol/pivot.go
+ delete mode 100644 src/runtime/indirect_opensbi.go
+
+diff --git a/src/runtime/ethanol/README b/src/runtime/ethanol/README
+index 6f14d86fd1..22e9972b3d 100644
+--- a/src/runtime/ethanol/README
++++ b/src/runtime/ethanol/README
+@@ -3,12 +3,23 @@
+ +---------------------+---------------------+---------------------+
+ | Start Address       | Size                | Area Description    |
+ +---------------------+---------------------+---------------------+
+-| ffff ffc0 0000 0000 | ?                   | Ethanol base        |
++| ffff ffc0 0000 0000 | 8KB                 | ^early stack        |
+ +---------------------+---------------------+---------------------+
+-|                     |                     |   ...               |
++| ffff ffc0 0000 2000 | ~ 2MB               | Ethanol base        |
+ +---------------------+---------------------+---------------------+
+-| ffff ffff ffe0 0000 | 2MB                 | Misc.               |
+-|                     |                     |   FDT_BASE          |
++| runtime.end         | FDT size (~ 8KB )   | var fdt string      |
+++---------------------+---------------------+---------------------+
++| ...                 | ...                 | ...                 |
+++---------------------+---------------------+---------------------+
++|                     | 16MB                | ^CPU 1 stack        |
+++---------------------+---------------------+---------------------+
++|                     | 16MB                | ^CPU 0 stack        |
+++---------------------+---------------------+---------------------+
++| ffff ffff fec0 0000 | max(2MB,slotSize)   | slot map            |
++|          ~          |                     |                     |
++| ffff ffff ffc0 0000 |                     |                     |
+++---------------------+---------------------+---------------------+
++| ffff ffff fff0 0000 | 1MB                 | early page table    |
+ +---------------------+---------------------+---------------------+
+ 
+ * Physical Memory Map
+@@ -16,13 +27,18 @@
+ +---------------------+---------------------+---------------------+
+ | Start Address       | Size                | Area Description    |
+ +---------------------+---------------------+---------------------+
++| 80000000            | ~ 60KB              | OpenSBI             |
+++---------------------+---------------------+---------------------+
++| 80100000            |                     | hole                |
++|                     |                     | base page table     |
+++---------------------+---------------------+---------------------+
+ | 80200000            | 8KB                 | goto jumper         |
+-|                     |                     | early stack         |
++|                     |                     | ^early stack        |
+ +---------------------+---------------------+---------------------+
+-| 80202000            | ?                   | Ethanol base        |
++| 80202000            | ~ 2MB               | Ethanol base        |
+ +---------------------+---------------------+---------------------+
+-|                     |                     |   ...               |
++| ...                 | ...                 | ...                 |
+ +---------------------+---------------------+---------------------+
+-| Max-2MB             | 2MB                 | Misc.               |
+-|                     |                     |   FDT_BASE          |
++| M                   | max(2MB,slotSize)   | slot map            |
++|                     |                     | max size = 18MB     |
+ +---------------------+---------------------+---------------------+
+diff --git a/src/runtime/ethanol/config.h b/src/runtime/ethanol/config.h
+new file mode 100644
+index 0000000000..1f21232c3a
+--- /dev/null
++++ b/src/runtime/ethanol/config.h
+@@ -0,0 +1,11 @@
++// Copyright 2021 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++// Early memory map
++#define VA_START_HI32	$0xffffffc0
++#define VA_START_LO32	$0x00000000
++#define EARLY_PT_HI32	$0xffffffff
++#define EARLY_PT_LO32	$0xfff00000
++#define PAGE_TYPE_2M	$0x200000
++#define PAGE_TYPE_4K	$0x1000
+diff --git a/src/runtime/ethanol/early_mm.go b/src/runtime/ethanol/early_mm.go
+new file mode 100644
+index 0000000000..092383e661
+--- /dev/null
++++ b/src/runtime/ethanol/early_mm.go
+@@ -0,0 +1,74 @@
++//go:build opensbi
++// +build opensbi
++
++package ethanol
++
++import "unsafe"
++
++// Some of these must agree with config.h
++const (
++	PAGE_TABLE_VA = 0xfffffffffff00000
++	PAGE_TABLE_PA = 0x80100000
++	PAGE_TYPE_2M  = 0x200000
++	PAGE_TYPE_4K  = 0x1000
++	PTE_XWRV      = 0xF
++	PTE_V         = 0x1
++)
++
++type pageType int
++
++var AddrOffset uintptr
++var loadAddr uintptr
++var linkAddr = uintptr(unsafe.Pointer(&AddrOffset))
++
++//go:nosplit
++func SFENCEVMA()
++
++func SetAddrOffset() {
++	loadAddr = uintptr(unsafe.Pointer(&AddrOffset))
++	AddrOffset = linkAddr - loadAddr
++}
++
++var PageTableRoot *[256][512]uintptr
++var NextPageTable uint
++
++//go:nosplit
++func MemoryMap(va, pa uintptr, pt pageType) {
++	vpn2 := (va & 0x0000007FC0000000) >> 30
++	vpn1 := (va & 0x000000003FE00000) >> 21
++	if (*PageTableRoot)[0][vpn2] == 0 {
++		pt2 := uintptr(NextPageTable*0x1000 + PAGE_TABLE_PA)
++		(*PageTableRoot)[0][vpn2] = pt2>>12<<10 | PTE_V
++		if pt == PAGE_TYPE_2M {
++			(*PageTableRoot)[NextPageTable][vpn1] = pa>>12<<10 | PTE_XWRV
++		} else {
++			pt1 := uintptr((NextPageTable+1)*0x1000 + PAGE_TABLE_PA)
++			(*PageTableRoot)[NextPageTable][vpn1] = pt1>>12<<10 | PTE_V
++			vpn0 := (va & 0x00000000001FF000) >> 12
++			(*PageTableRoot)[NextPageTable+1][vpn0] = pa>>12<<10 | PTE_XWRV
++			NextPageTable += 1
++		}
++		NextPageTable += 1
++		return
++	} else {
++		pt1 := ((*PageTableRoot)[0][vpn2]>>10<<12 - PAGE_TABLE_PA) / 0x1000
++		if (*PageTableRoot)[pt1][vpn1] == 0 {
++			if pt == PAGE_TYPE_2M {
++				(*PageTableRoot)[pt1][vpn1] = pa>>12<<10 | PTE_XWRV
++			} else {
++				pt0 := uintptr((NextPageTable+1)*0x1000 + PAGE_TABLE_PA)
++				(*PageTableRoot)[pt1][vpn1] = pt0>>12<<10 | PTE_V
++				vpn0 := (va & 0x00000000001FF000) >> 12
++				(*PageTableRoot)[pt0][vpn0] = pa>>12<<10 | PTE_XWRV
++				NextPageTable += 1
++			}
++			return
++		} else if pt == PAGE_TYPE_4K {
++			pt0 := ((*PageTableRoot)[pt1][vpn1]>>10<<12 - PAGE_TABLE_PA) / 0x1000
++			vpn0 := (va & 0x00000000001FF000) >> 12
++			(*PageTableRoot)[pt0][vpn0] = pa>>12<<10 | PTE_XWRV
++			return
++		}
++	}
++	print("weird: ", unsafe.Pointer(va), " to ", unsafe.Pointer(pa), " of type ", pt, "\n")
++}
+diff --git a/src/runtime/ethanol/fdt.go b/src/runtime/ethanol/fdt.go
+index 7030fa034f..ed0888d470 100644
+--- a/src/runtime/ethanol/fdt.go
++++ b/src/runtime/ethanol/fdt.go
+@@ -14,9 +14,11 @@ func memoryNotFound() (uint, uint) {
+ 	return 0x80000000, 0x10000000
+ }
+ 
++var fdt string
++
+ // We don't have any advanced features yet, so
+ // hardcoded to search for "memory" and "reg"
+-func GetMemoryInfo(fdt string) (uint, uint) {
++func GetMemoryInfo() (uint, uint) {
+ 	nodeOffset := getWord(fdt, 8)
+ 	strOffset := getWord(fdt, 12)
+ 	// find "reg" directly
+diff --git a/src/runtime/ethanol/misc.s b/src/runtime/ethanol/misc.s
+new file mode 100644
+index 0000000000..64a549d023
+--- /dev/null
++++ b/src/runtime/ethanol/misc.s
+@@ -0,0 +1,13 @@
++// Copyright 2015 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi
++// +build opensbi
++
++#include "textflag.h"
++
++// func SFENCEVMA(void) void
++TEXT runtime∕ethanol·SFENCEVMA(SB), NOSPLIT|NOFRAME, $0-0
++	SFENCEVMA
++	RET
+diff --git a/src/runtime/ethanol/pivot.go b/src/runtime/ethanol/pivot.go
+deleted file mode 100644
+index 0a056ab7f3..0000000000
+--- a/src/runtime/ethanol/pivot.go
++++ /dev/null
+@@ -1,7 +0,0 @@
+-package ethanol
+-
+-import "unsafe"
+-
+-var Pivot uintptr
+-var LoadAddr uintptr
+-var LinkAddr = uintptr(unsafe.Pointer(&Pivot))
+diff --git a/src/runtime/indirect_opensbi.go b/src/runtime/indirect_opensbi.go
+deleted file mode 100644
+index 6677c306b8..0000000000
+--- a/src/runtime/indirect_opensbi.go
++++ /dev/null
+@@ -1,13 +0,0 @@
+-package runtime
+-
+-import (
+-	"runtime/ethanol"
+-	"unsafe"
+-)
+-
+-var AddrOffset uintptr
+-
+-func setAddrOffset() {
+-	ethanol.LoadAddr = uintptr(unsafe.Pointer(&ethanol.Pivot))
+-	AddrOffset = ethanol.LinkAddr - ethanol.LoadAddr
+-}
+diff --git a/src/runtime/mem_opensbi.go b/src/runtime/mem_opensbi.go
+index 7102d88ffb..15ebbe2baf 100644
+--- a/src/runtime/mem_opensbi.go
++++ b/src/runtime/mem_opensbi.go
+@@ -8,9 +8,38 @@
+ package runtime
+ 
+ import (
++	"runtime/ethanol"
+ 	"unsafe"
+ )
+ 
++var base2PowVA [19]uintptr
++
++// 0 for 4K, 1 for 2M
++const (
++	INDEX_4K = 0
++	INDEX_2M = 1
++)
++
++var pageBase [2]paSection
++
++type paSection struct {
++	base uintptr
++	next uintptr
++}
++
++func baseInit() {
++	base := uintptr(0xffffffc100000000)
++	step := uintptr(0x0000000100000000)
++	for j := 1; j < 20; j++ {
++		base2PowVA[j-1] = base
++		base += step
++	}
++	pageBase[INDEX_4K].base = 0x80400000
++	pageBase[INDEX_4K].next = 0x80400000
++	pageBase[INDEX_2M].base = 0x80600000
++	pageBase[INDEX_2M].next = 0x80600000
++}
++
+ // Don't split the stack as this function may be invoked without a valid G,
+ // which prevents us from allocating more stack.
+ //go:nosplit
+@@ -40,9 +69,71 @@ func sysFault(v unsafe.Pointer, n uintptr) {
+ }
+ 
+ func sysReserve(v unsafe.Pointer, n uintptr) unsafe.Pointer {
+-	return v
++	// Let's ignore the v anyway.
++	// Check ethanol/README for memory map.
++
++	// 4K is the basic unit.
++	order := n >> 12
++	i := uintptr(1)
++	j := uintptr(1)
++	for i < order {
++		i = i << 1
++		// 0xffffff_c0_00000000 is for base kernel
++		//           ^ j = 1(4K) ~ 19(1G)
++		j += 1
++	}
++	ret := base2PowVA[j-1]
++	base2PowVA[j-1] += uintptr(i << 12)
++	print("Reserve: ", unsafe.Pointer(n), " bytes, at ", v, " but at ", unsafe.Pointer(ret), "\n")
++	return unsafe.Pointer(ret)
++}
++
++func updatePageBase(index int) {
++	if index == INDEX_4K {
++		if pageBase[INDEX_4K].next+0x1000 != pageBase[INDEX_2M].base {
++			pageBase[INDEX_4K].next += 0x1000
++		} else {
++			pageBase[INDEX_4K].base = pageBase[INDEX_2M].next
++			pageBase[INDEX_4K].next = pageBase[INDEX_2M].next
++		}
++	} else {
++		if pageBase[INDEX_2M].next+0x200000 != pageBase[INDEX_4K].base {
++			pageBase[INDEX_2M].next += 0x200000
++		} else {
++			pageBase[INDEX_2M].base = pageBase[INDEX_4K].next / 0x200000 * 0x200000
++			pageBase[INDEX_2M].next = pageBase[INDEX_4K].next / 0x200000 * 0x200000
++		}
++	}
++	//print("4K: ", unsafe.Pointer(pageBase[INDEX_4K].base), "-", unsafe.Pointer(pageBase[INDEX_4K].next), "\n")
++	//print("2M: ", unsafe.Pointer(pageBase[INDEX_2M].base), "-", unsafe.Pointer(pageBase[INDEX_2M].next), "\n")
+ }
+ 
+ func sysMap(v unsafe.Pointer, n uintptr, sysStat *sysMemStat) {
++	ptr := uintptr(v)
+ 	sysStat.add(int64(n))
++	print("Map: ", unsafe.Pointer(n), " bytes, at ", unsafe.Pointer(v), "\n")
++	i := uintptr(1)
++	for i < n {
++		i = i << 1
++	}
++	n = i
++	if n <= ethanol.PAGE_TYPE_4K {
++		ethanol.MemoryMap(ptr, pageBase[INDEX_4K].next, ethanol.PAGE_TYPE_4K)
++		updatePageBase(INDEX_4K)
++	} else if n < ethanol.PAGE_TYPE_2M {
++		for n > 0 {
++			ethanol.MemoryMap(ptr, pageBase[INDEX_4K].next, ethanol.PAGE_TYPE_4K)
++			updatePageBase(INDEX_4K)
++			ptr += 0x1000
++			n -= 0x1000
++		}
++	} else {
++		for n > 0 {
++			ethanol.MemoryMap(ptr, pageBase[INDEX_2M].next, ethanol.PAGE_TYPE_2M)
++			updatePageBase(INDEX_2M)
++			ptr += 0x200000
++			n -= 0x200000
++		}
++	}
++	ethanol.SFENCEVMA()
+ }
+diff --git a/src/runtime/os_opensbi.go b/src/runtime/os_opensbi.go
+index 128fd8b570..827ab84c0c 100644
+--- a/src/runtime/os_opensbi.go
++++ b/src/runtime/os_opensbi.go
+@@ -108,15 +108,19 @@ func unminit() {
+ func mdestroy(mp *m) {
+ }
+ 
+-var fdt string
++var earlyPageTable uintptr
+ 
+ func osinit() {
+ 	ncpu = 1
+ 	getg().m.procid = 2
+ 	physPageSize = 4096
+-	memBase, memSize := ethanol.GetMemoryInfo(fdt)
++	memBase, memSize := ethanol.GetMemoryInfo()
+ 	print("Memory Base:", memBase, "\n")
+ 	print("Memory Size:", memSize, "\n")
++
++	// For the memory map of ethanol, check
++	// src/runtime/ethanol/README.
++	baseInit()
+ }
+ 
+ // wasm has no signals
+diff --git a/src/runtime/rt0_opensbi_riscv64.s b/src/runtime/rt0_opensbi_riscv64.s
+index 84eff96a16..cbe80ab404 100644
+--- a/src/runtime/rt0_opensbi_riscv64.s
++++ b/src/runtime/rt0_opensbi_riscv64.s
+@@ -4,11 +4,12 @@
+ 
+ #include "textflag.h"
+ #include "ethanol/csr.h"
++#include "ethanol/config.h"
+ 
+ // the input is in A0
+ TEXT dump(SB),NOSPLIT|NOFRAME,$0
+ 	MOV	A0, A4
+-	ADDI	$15, X0, A1
++	ADDI	$15, ZERO, A1
+ loop:
+ 	// recover the input
+ 	MOV	A4, A0
+@@ -16,11 +17,11 @@ loop:
+ 	SLLI    $2, A1, A2
+ 	SRL	A2, A0, A3
+ 	// we only need 4 bits
+-	ADDI	$0xF, X0, A2
++	ADDI	$0xF, ZERO, A2
+ 	AND	A3, A2, A0
+ 
+ 	// compare to 9
+-	ADDI	$9, X0, A2
++	ADDI	$9, ZERO, A2
+ 	BLT     A2, A0, hexa
+ hexn:	// number
+ 	ADD     $48, A0, A0
+@@ -35,7 +36,7 @@ hex:
+ 
+ 	// the end of loop
+ 	ADDI	$-1, A1, A1
+-	BGE	A1, X0, loop
++	BGE	A1, ZERO, loop
+ 
+ 	// newline
+ 	MOV	$10, A0
+@@ -50,11 +51,11 @@ TEXT early_halt(SB),NOSPLIT|NOFRAME,$0
+ 	MOV	$1, A7
+ 	MOV	$0, A6
+ 	ECALL
+-	CSRRS	CSR_SCAUSE, X0, A0
++	CSRRS	CSR_SCAUSE, ZERO, A0
+ 	CALL	dump(SB)
+-	CSRRS	CSR_STVAL, X0, A0
++	CSRRS	CSR_STVAL, ZERO, A0
+ 	CALL	dump(SB)
+-	CSRRS	CSR_SEPC, X0, A0
++	CSRRS	CSR_SEPC, ZERO, A0
+ 	CALL	dump(SB)
+ 
+ 	WFI
+@@ -75,7 +76,7 @@ TEXT setupFDT(SB),NOSPLIT|NOFRAME,$0
+ 	LBU	7(T0), T3
+ 	ADD	T2, T3, T2
+ 	// format FDT as string part 1: address and length
+-	MOV	$runtime·fdt(SB), T3
++	MOV     $runtime∕ethanol·fdt(SB), T3
+ 	MOV	T1, 0(T3)
+ 	MOV	T2, 8(T3)
+ 
+@@ -99,25 +100,64 @@ zeroize:
+ 
+ 	RET
+ 
++TEXT clearFix(SB),NOSPLIT|NOFRAME,$0
++	MOV	$0x80100000, T0
++	MOV	$0x80200000, T1
++zeroize:
++	SD	ZERO, 0(T0)
++	ADD	$8, T0, T0
++	BLT	T0, T1, zeroize
++
++	RET
++
+ TEXT _rt0_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
+ 	CALL	clearBSS(SB)
++	CALL	clearFix(SB)
+ 	CALL	setupFDT(SB)
+ 	JMP	relocate(SB)
+ 
+ TEXT relocate(SB),NOSPLIT|NOFRAME,$0
++	// setup early SP in PA
++	MOV	$runtime·text(SB), SP
++
+ 	// setup stvec for enabling VA
+-	MOV	$_rt1_riscv64_opensbi(SB), A0
+-	CALL	runtime·setAddrOffset(SB)
+-	MOV	$runtime·AddrOffset(SB), A1
+-	LD	0(A1), A1
+-	ADD	A0, A1, A0
+-	CSRRW	CSR_STVEC, A0, X0
++	CALL	runtime∕ethanol·SetAddrOffset<ABIInternal>(SB)
++	MOV	$_rt1_riscv64_opensbi(SB), T0
++	MOV	$runtime∕ethanol·AddrOffset(SB), T1
++	MOV	0(T1), T1
++	ADD	T0, T1, T0
++	CSRRW	CSR_STVEC, T0, ZERO
++
++	// Setup page table
++	MOV	EARLY_PT_HI32, T0
++	SLL	$32, T0, T0
++	MOV	EARLY_PT_LO32, T1
++	MOV	$runtime∕ethanol·PageTableRoot(SB), T2
++	ADD	T0, T1, T0
++	MOV	T0, 0(T2)
++	MOV	$runtime∕ethanol·NextPageTable(SB), T2
++	MOV	$3, T0
++	MOV	T0, 0(T2)
++
++	// Setup kernel mapping
++	CALL	map_kernel(SB)
++	// Setup page table mapping
++	CALL	map_page_table(SB)
++
++	SFENCEVMA
++	MOV	$0x80000000, T0
++	SLL	$32, T0, T0
++	ADD	$0x80100, T0, T0
++	CSRRW	CSR_SATP, T0, ZERO
+ 
+-	// setup SP in VA
+-	MOV     $0x80202000, X2
+-	ADD	X2, A1, X2
++	// never reach here
++	NOP
++	EBREAK
+ 
+-	// setup page table
++TEXT map_kernel(SB),NOSPLIT|NOFRAME,$0
++	// 0xffffffc0_00000000 to 0x80200000
++	//         7F_C
++	//            4FE
+ 	// Level 2
+ 	MOV	$0x80101000, T0
+ 	MOV	ZERO, T1
+@@ -128,29 +168,42 @@ TEXT relocate(SB),NOSPLIT|NOFRAME,$0
+ 	MOV	ZERO, T1
+ 	ADD	$0x20040401, T1, T1
+ 	SD	T1, 0(T0)
+-	// SATP
+-	MOV	$0x80000000, T0
+-	SLL	$32, T0, T0
+-	ADD	$0x80100, T0, T0
+-	SFENCEVMA
+-	CSRRW	CSR_SATP, T0, X0
+ 
+-	// never reach here
+-	NOP
+-	EBREAK
++	RET
++
++TEXT map_page_table(SB),NOSPLIT|NOFRAME,$0
++	// 0xffffffff_fff00000 to 0x80100000
++	//         7F_C
++	//            4FE
++	// Level 2
++	MOV	$0x80102FF8, T0
++	MOV	ZERO, T1
++	ADD	$0x2000000f, T1, T1
++	SD	T1, 0(T0)
++	// Level 1
++	MOV	$0x80100FF8, T0
++	MOV	ZERO, T1
++	ADD	$0x20040801, T1, T1
++	SD	T1, 0(T0)
++
++	RET
+ 
+ TEXT _rt1_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
+ 	// Trap vector for debugging
+ 	MOV	$early_halt(SB), A0
+-	CSRRW	CSR_STVEC, A0, X0
++	CSRRW	CSR_STVEC, A0, ZERO
+ 
+ 	// format FDT as string part2: relocate address
+-	MOV	$runtime·fdt(SB), T3
++	MOV     $runtime∕ethanol·fdt(SB), T3
+ 	MOV	0(T3), T1
+-	MOV	$runtime·AddrOffset(SB), T2
++	MOV	$runtime∕ethanol·AddrOffset(SB), T2
+ 	LD	0(T2), T2
+-	ADD	T1, T2, T2
+-	MOV	T2, 0(T3)
++	ADD	T1, T2, T1
++	MOV	T1, 0(T3)
++
++	// setup SP in VA
++	MOV     $0x80202000, SP
++	ADD	SP, T2, SP
+ 
+ 	// General Golang entry
+ 	MOV	$runtime·rt0_go(SB), T0
+--
+2.32.0
