@@ -7,7 +7,8 @@ run:
 		-m 512M \
 		-nographic \
 		-bios misc/opensbi-0.9/build/platform/generic/firmware/fw_jump.bin \
-		-device loader,file=ethanol/goto/goto.bin,addr=0x80200000 \
+		-kernel ethanol/goto/goto.bin \
+		-append "ethanol arg1 arg2 env1=1 env2=abc" \
 		-device loader,file=ethanol/ethanol,addr=0x80201000,force-raw=on $(EXTRA_FLAGS)
 
 .PHONY: env run qemu clean allclean debug

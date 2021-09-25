@@ -1,0 +1,217 @@
+From ad08bc7806250b9badbb8f5341ee9a43e1380a30 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Sun, 22 Aug 2021 22:40:06 +0800
+Subject: [PATCH 14/14] M.0 Command-line argument and environment variable
+
+---
+ src/runtime/ethanol/README        |  1 +
+ src/runtime/ethanol/fdt.go        | 46 +++++++++++++++++++++++
+ src/runtime/ethanol/misc.s        | 61 ++++++++++++++++++++++++++++++-
+ src/runtime/os_opensbi.go         |  3 ++
+ src/runtime/rt0_opensbi_riscv64.s |  6 +++
+ src/runtime/runtime1.go           |  2 +
+ 6 files changed, 118 insertions(+), 1 deletion(-)
+
+diff --git a/src/runtime/ethanol/README b/src/runtime/ethanol/README
+index 22e9972b3d..a5a5296309 100644
+--- a/src/runtime/ethanol/README
++++ b/src/runtime/ethanol/README
+@@ -33,6 +33,7 @@
+ |                     |                     | base page table     |
+ +---------------------+---------------------+---------------------+
+ | 80200000            | 8KB                 | goto jumper         |
++|                     |                     | args & envp         |
+ |                     |                     | ^early stack        |
+ +---------------------+---------------------+---------------------+
+ | 80202000            | ~ 2MB               | Ethanol base        |
+diff --git a/src/runtime/ethanol/fdt.go b/src/runtime/ethanol/fdt.go
+index ed0888d470..126352af49 100644
+--- a/src/runtime/ethanol/fdt.go
++++ b/src/runtime/ethanol/fdt.go
+@@ -1,3 +1,6 @@
++//go:build opensbi
++// +build opensbi
++
+ package ethanol
+ 
+ const (
+@@ -89,3 +92,46 @@ func fdtsubstr(fdt, s string, o uint) bool {
+ 	}
+ 	return true
+ }
++
++func argsNotFound() int32 {
++	print("This FDT contains no arguments !\n")
++	return 0
++}
++
++func setArgv(s string, off uint) int32
++func GetArgc() int32 {
++	nodeOffset := getWord(fdt, 8)
++	strOffset := getWord(fdt, 12)
++	// find "bootargs" directly
++	regStrOffset, found := getStrOffset(fdt, "bootargs", strOffset, getWord(fdt, 32))
++	if !found {
++		return argsNotFound()
++	}
++
++	var l uint
++	var off uint
++	getReg := false
++	for i := nodeOffset; i < nodeOffset+getWord(fdt, 36); i += 4 {
++		if getWord(fdt, i) == FDT_BEGIN_NODE {
++			i += 4
++			if fdtsubstr(fdt, "chosen", i) {
++				for fdt[i] != 0 {
++					i++
++				}
++				i = i / 4 * 4
++				getReg = true
++			}
++		} else if getWord(fdt, i) == FDT_PROP && getReg {
++			if getWord(fdt, i+8) == regStrOffset {
++				l = getWord(fdt, i+4)
++				off = i + 12
++				break
++			}
++		}
++	}
++
++	if l > 1 {
++		return setArgv(fdt, off)
++	}
++	return argsNotFound()
++}
+diff --git a/src/runtime/ethanol/misc.s b/src/runtime/ethanol/misc.s
+index c9025b4777..51931a3610 100644
+--- a/src/runtime/ethanol/misc.s
++++ b/src/runtime/ethanol/misc.s
+@@ -7,7 +7,66 @@
+ 
+ #include "textflag.h"
+ 
+-// func SFENCEVMA(void) void
++// func SFENCEVMA()
+ TEXT runtime∕ethanol·SFENCEVMA(SB), NOSPLIT|NOFRAME, $0-0
+ 	SFENCEVMA
+ 	RET
++
++// func setArgv(s string, off uint) uint32
++TEXT runtime∕ethanol·setArgv(SB), NOSPLIT|NOFRAME, $0-28
++	MOV	s+0(FP), A0
++	MOV	off+16(FP), A1
++	ADD	A0, A1, A1
++
++	// get argv
++	MOV     $runtime·argv(SB), A0
++	MOV	0(A0), A0
++
++	MOV	$0, A2
++	MOV	$0x20, A3
++	MOV	$0x3d, A4
++setarg:
++	MOV	A1, 0(A0)
++	ADD	$8, A0, A0
++findnull:
++	MOVBU	0(A1), A5
++	BEQ	ZERO, A5, end
++	BEQ	A4, A5, env
++	BNE	A3, A5, skip
++	// if fdt[i] == ' '
++	MOVB	ZERO, 0(A1)
++	ADD	$1, A2, A2
++	ADD	$1, A1, A1
++	JMP	setarg
++skip:
++	// fdt[i] character is normal
++	ADD	$1, A1, A1
++	JMP	findnull
++
++	// if fdt[i] == '='
++env:
++	MOV	A2, A6
++	MOV	-8(A0), A2
++	MOV	ZERO, -8(A0)
++	MOV	A2, 0(A0)
++	ADD	$8, A0, A0
++	JMP	findnull2
++setenv:
++	MOV	A1, 0(A0)
++	ADD	$8, A0, A0
++findnull2:
++	MOVBU	0(A1), A5
++	BEQ	ZERO, A5, end
++	BNE	A3, A5, skip2
++	// if fdt[i] == ' '
++	MOVB	ZERO, 0(A1)
++	ADD	$1, A1, A1
++	JMP	setenv
++skip2:
++	// fdt[i] character is normal
++	ADD	$1, A1, A1
++	JMP	findnull2
++end:
++
++	MOVW	A6, ret+24(FP)
++	RET
+diff --git a/src/runtime/os_opensbi.go b/src/runtime/os_opensbi.go
+index 827ab84c0c..ee6a9018de 100644
+--- a/src/runtime/os_opensbi.go
++++ b/src/runtime/os_opensbi.go
+@@ -109,6 +109,7 @@ func mdestroy(mp *m) {
+ }
+ 
+ var earlyPageTable uintptr
++var argvStr string
+ 
+ func osinit() {
+ 	ncpu = 1
+@@ -121,6 +122,8 @@ func osinit() {
+ 	// For the memory map of ethanol, check
+ 	// src/runtime/ethanol/README.
+ 	baseInit()
++	argc = ethanol.GetArgc()
++	print("argc: ", argc, "\n")
+ }
+ 
+ // wasm has no signals
+diff --git a/src/runtime/rt0_opensbi_riscv64.s b/src/runtime/rt0_opensbi_riscv64.s
+index a870fdeef0..d2f0d1ff8a 100644
+--- a/src/runtime/rt0_opensbi_riscv64.s
++++ b/src/runtime/rt0_opensbi_riscv64.s
+@@ -205,6 +205,12 @@ TEXT _rt1_riscv64_opensbi(SB),NOSPLIT|NOFRAME,$0
+ 	MOV     $0x80202000, SP
+ 	ADD	SP, T2, SP
+ 
++	// setup argv
++	MOV	VA_START_HI32, T0
++	SLL	$32, T0, T0
++	MOV	VA_START_LO32, T1
++	ADD	T0, T1, A1
++
+ 	// General Golang entry
+ 	MOV	$runtime·rt0_go(SB), T0
+ 	JALR	ZERO, T0
+diff --git a/src/runtime/runtime1.go b/src/runtime/runtime1.go
+index b6c3cbfff4..fb5556b788 100644
+--- a/src/runtime/runtime1.go
++++ b/src/runtime/runtime1.go
+@@ -71,6 +71,7 @@ func goargs() {
+ 	argslice = make([]string, argc)
+ 	for i := int32(0); i < argc; i++ {
+ 		argslice[i] = gostringnocopy(argv_index(argv, i))
++		print("argv[", i, "] = ", argslice[i], "\n")
+ 	}
+ }
+ 
+@@ -86,6 +87,7 @@ func goenvs_unix() {
+ 	envs = make([]string, n)
+ 	for i := int32(0); i < n; i++ {
+ 		envs[i] = gostring(argv_index(argv, argc+1+i))
++		print("envp[", i, "] = ", envs[i], "\n")
+ 	}
+ }
+ 
+-- 
+2.32.0
+
