@@ -1,0 +1,196 @@
+From 0073bd1ab37f123c7bcd9255625a1abf89257ed1 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Sun, 29 Aug 2021 21:31:44 +0800
+Subject: [PATCH 15/15] 3.0 Implement basic timer interrupt
+
+---
+ src/cmd/internal/obj/riscv/obj.go |  4 +++-
+ src/runtime/ethanol/csr.h         | 10 ++++++++
+ src/runtime/ethanol/trap.go       |  8 +++++++
+ src/runtime/ethanol/trap.s        | 40 +++++++++++++++++++++++++++++++
+ src/runtime/os_opensbi.go         | 11 +++++++++
+ src/runtime/rt0_opensbi_riscv64.s |  2 ++
+ src/runtime/runtime1.go           |  2 --
+ 7 files changed, 74 insertions(+), 3 deletions(-)
+ create mode 100644 src/runtime/ethanol/trap.go
+ create mode 100644 src/runtime/ethanol/trap.s
+
+diff --git a/src/cmd/internal/obj/riscv/obj.go b/src/cmd/internal/obj/riscv/obj.go
+index 9493e560ae..6429c2df8e 100644
+--- a/src/cmd/internal/obj/riscv/obj.go
++++ b/src/cmd/internal/obj/riscv/obj.go
+@@ -1479,8 +1479,10 @@ var encodings = [ALAST & obj.AMask]encoding{
+ 	AECALL & obj.AMask:     iIEncoding,
+ 	AEBREAK & obj.AMask:    iIEncoding,
+ 	AWFI & obj.AMask:       iIEncoding,
++	ASRET & obj.AMask:      iIEncoding,
+ 	ACSRRW & obj.AMask:     iIEncoding,
+ 	ACSRRS & obj.AMask:     iIEncoding,
++	ACSRRC & obj.AMask:     iIEncoding,
+ 	ASFENCEVMA & obj.AMask: iIEncoding,
+ 
+ 	// Escape hatch
+@@ -1928,7 +1930,7 @@ func instructionsForProg(p *obj.Prog) []*instruction {
+ 		ins.funct7 = 2
+ 		ins.rd, ins.rs1, ins.rs2 = uint32(p.RegTo2), uint32(p.To.Reg), uint32(p.From.Reg)
+ 
+-	case AWFI, ASFENCEVMA, AECALL, AEBREAK, ARDCYCLE, ARDTIME, ARDINSTRET:
++	case ASRET, AWFI, ASFENCEVMA, AECALL, AEBREAK, ARDCYCLE, ARDTIME, ARDINSTRET:
+ 		insEnc := encode(p.As)
+ 		if p.To.Type == obj.TYPE_NONE {
+ 			ins.rd = REG_ZERO
+diff --git a/src/runtime/ethanol/csr.h b/src/runtime/ethanol/csr.h
+index bfb7f7a880..65d512d946 100644
+--- a/src/runtime/ethanol/csr.h
++++ b/src/runtime/ethanol/csr.h
+@@ -3,8 +3,18 @@
+ // license that can be found in the LICENSE file.
+ 
+ // CSR encoding
++#define CSR_SSTATUS     $0x100
++#define CSR_SIE		$0x104
+ #define CSR_STVEC	$0x105
+ #define CSR_SEPC	$0x141
+ #define CSR_SCAUSE	$0x142
+ #define CSR_STVAL	$0x143
++#define CSR_SIP		$0x144
+ #define CSR_SATP	$0x180
++#define CSR_TIME	$-0x3ff //0xc01
++
++// SSTATUS encoding
++#define SSTATUS_SIE	$0x00000002
++
++// SIE & SIP encoding
++#define SIE_STI		$0x00000020
+diff --git a/src/runtime/ethanol/trap.go b/src/runtime/ethanol/trap.go
+new file mode 100644
+index 0000000000..60f18053aa
+--- /dev/null
++++ b/src/runtime/ethanol/trap.go
+@@ -0,0 +1,8 @@
++//go:build opensbi
++// +build opensbi
++
++package ethanol
++
++func TimerInterrupt(on bool)
++func Interrupt(on bool)
++func SetTimer()
+diff --git a/src/runtime/ethanol/trap.s b/src/runtime/ethanol/trap.s
+new file mode 100644
+index 0000000000..dabbe9bc65
+--- /dev/null
++++ b/src/runtime/ethanol/trap.s
+@@ -0,0 +1,40 @@
++// Copyright 2015 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build opensbi
++// +build opensbi
++
++#include "textflag.h"
++#include "csr.h"
++
++// func TimerInterrupt(on bool)
++TEXT runtime∕ethanol·TimerInterrupt(SB), NOSPLIT|NOFRAME, $0-8
++	MOV	on+0(FP), A0
++	MOV	SIE_STI, A1
++	BEQ	A0, ZERO, clear
++	CSRRS	CSR_SIE, A1, ZERO
++	RET
++clear:
++	CSRRC	CSR_SIE, A1, ZERO
++	RET
++
++// func Interrupt(on bool)
++TEXT runtime∕ethanol·Interrupt(SB), NOSPLIT|NOFRAME, $0-8
++	MOV	on+0(FP), A0
++	MOV	SSTATUS_SIE, A1
++	BEQ	A0, ZERO, clear
++	CSRRS	CSR_SSTATUS, A1, ZERO
++	RET
++clear:
++	CSRRC	CSR_SSTATUS, A1, ZERO
++	RET
++
++// func SetTimer()
++TEXT runtime∕ethanol·SetTimer(SB), NOSPLIT|NOFRAME, $0-0
++	CSRRS   CSR_TIME, ZERO, A0
++	ADD	$0x1000000, A0, A0
++	MOV     $0, A6
++	MOV     $0x54494D45, A7
++	ECALL
++	RET
+diff --git a/src/runtime/os_opensbi.go b/src/runtime/os_opensbi.go
+index ee6a9018de..00a406868f 100644
+--- a/src/runtime/os_opensbi.go
++++ b/src/runtime/os_opensbi.go
+@@ -111,6 +111,11 @@ func mdestroy(mp *m) {
+ var earlyPageTable uintptr
+ var argvStr string
+ 
++const (
++	ON  = true
++	OFF = false
++)
++
+ func osinit() {
+ 	ncpu = 1
+ 	getg().m.procid = 2
+@@ -124,6 +129,10 @@ func osinit() {
+ 	baseInit()
+ 	argc = ethanol.GetArgc()
+ 	print("argc: ", argc, "\n")
++
++	ethanol.TimerInterrupt(ON)
++	ethanol.Interrupt(ON)
++	ethanol.SetTimer()
+ }
+ 
+ // wasm has no signals
+@@ -151,6 +160,8 @@ func initsig(preinit bool) {
+ // May run with m.p==nil, so write barriers are not allowed.
+ //go:nowritebarrier
+ func newosproc(mp *m) {
++	for {
++	}
+ 	panic("newosproc: not implemented")
+ }
+ 
+diff --git a/src/runtime/rt0_opensbi_riscv64.s b/src/runtime/rt0_opensbi_riscv64.s
+index d2f0d1ff8a..9826df6772 100644
+--- a/src/runtime/rt0_opensbi_riscv64.s
++++ b/src/runtime/rt0_opensbi_riscv64.s
+@@ -58,6 +58,8 @@ TEXT early_halt(SB),NOSPLIT|NOFRAME,$0
+ 	CSRRS	CSR_SEPC, ZERO, A0
+ 	CALL	dump(SB)
+ 
++	CALL	runtime∕ethanol·SetTimer(SB)
++	SRET
+ 	WFI
+ 	JMP	early_halt(SB)
+ 
+diff --git a/src/runtime/runtime1.go b/src/runtime/runtime1.go
+index fb5556b788..b6c3cbfff4 100644
+--- a/src/runtime/runtime1.go
++++ b/src/runtime/runtime1.go
+@@ -71,7 +71,6 @@ func goargs() {
+ 	argslice = make([]string, argc)
+ 	for i := int32(0); i < argc; i++ {
+ 		argslice[i] = gostringnocopy(argv_index(argv, i))
+-		print("argv[", i, "] = ", argslice[i], "\n")
+ 	}
+ }
+ 
+@@ -87,7 +86,6 @@ func goenvs_unix() {
+ 	envs = make([]string, n)
+ 	for i := int32(0); i < n; i++ {
+ 		envs[i] = gostring(argv_index(argv, argc+1+i))
+-		print("envp[", i, "] = ", envs[i], "\n")
+ 	}
+ }
+ 
+-- 
+2.32.0
+

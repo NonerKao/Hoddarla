@@ -1,8 +1,8 @@
-# Hoddarla 專案：鐵人賽第十六天
+# Hoddarla 專案：鐵人賽第十七天
 
 ## 實驗步驟
 
-執行之後，會發現停在 `newosproc` 的錯誤訊息。
+執行之後，會發現隨著一段時間都會刷出新的三行訊息。
 之後可以使用 `Ctrl+A` `X` 中止 QEMU。（可以調整 QEMU 參數控制不同的記憶體大小）
 
 也可以透過 `make EXTRA_FLAGS='-S -s'` 來將除錯埠設定在本機的 1234。
@@ -13,7 +13,7 @@
 ```
 # in Hoddarla directory
 git pull origin ithome
-make apply
+make stamps/go-env    # 今天需要重編工具鏈
 make clean && make
 ```
 
