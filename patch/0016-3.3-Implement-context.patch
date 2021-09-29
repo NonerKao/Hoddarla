@@ -1,0 +1,231 @@
+From 885196514d14614db47407ec3971f78f8129b0b8 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Fri, 10 Sep 2021 06:22:23 +0800
+Subject: [PATCH 16/17] 3.3 Implement context
+
+---
+ src/runtime/ethanol/csr.h         |   1 +
+ src/runtime/ethanol/trap.go       |   2 ++
+ src/runtime/ethanol/trap.s        |  13 ++++
+ src/runtime/os_opensbi.go         |  18 +++++-
+ src/runtime/sys_opensbi_riscv64.s | 100 ++++++++++++++++++++++++++++++
+ 5 files changed, 136 insertions(+), 1 deletion(-)
+
+diff --git a/src/runtime/ethanol/csr.h b/src/runtime/ethanol/csr.h
+index 65d512d946..cf17f69f7c 100644
+--- a/src/runtime/ethanol/csr.h
++++ b/src/runtime/ethanol/csr.h
+@@ -6,6 +6,7 @@
+ #define CSR_SSTATUS     $0x100
+ #define CSR_SIE		$0x104
+ #define CSR_STVEC	$0x105
++#define CSR_SSCRATCH	$0x140
+ #define CSR_SEPC	$0x141
+ #define CSR_SCAUSE	$0x142
+ #define CSR_STVAL	$0x143
+diff --git a/src/runtime/ethanol/trap.go b/src/runtime/ethanol/trap.go
+index 663c225dc2..6a97a430e9 100644
+--- a/src/runtime/ethanol/trap.go
++++ b/src/runtime/ethanol/trap.go
+@@ -1,8 +1,10 @@
+ //go:build opensbi
+ // +build opensbi
+ 
+ package ethanol
+ 
++func SetSscratch(s uintptr)
+ func TimerInterrupt(on bool)
+ func Interrupt(on bool)
+ func SetTimer()
++func SetStvec(f func())
+diff --git a/src/runtime/ethanol/trap.s b/src/runtime/ethanol/trap.s
+index 96659d4068..ebe35e7174 100644
+--- a/src/runtime/ethanol/trap.s
++++ b/src/runtime/ethanol/trap.s
+@@ -38,3 +38,16 @@ TEXT runtime∕ethanol·SetTimer(SB), NOSPLIT|NOFRAME, $0-0
+ 	MOV     $0x54494D45, A7
+ 	ECALL
+ 	RET
++
++// func SetSscratch(s uintptr)
++TEXT runtime∕ethanol·SetSscratch(SB), NOSPLIT|NOFRAME, $0-8
++	MOV	s+0(FP), A0
++	CSRRW   CSR_SSCRATCH, A0, ZERO
++	RET
++
++// func SetStvec(f func())
++TEXT runtime∕ethanol·SetStvec(SB), NOSPLIT|NOFRAME, $0-8
++	MOV	f+0(FP), A0
++	MOV	0(A0), A0
++	CSRRW   CSR_STVEC, A0, ZERO
++	RET
+diff --git a/src/runtime/os_opensbi.go b/src/runtime/os_opensbi.go
+index 00a406868f..3ade0a687f 100644
+--- a/src/runtime/os_opensbi.go
++++ b/src/runtime/os_opensbi.go
+@@ -44,7 +44,9 @@ func exitThread(wait *uint32) {
+ 	return
+ }
+ 
+-type mOS struct{}
++type mOS struct {
++	tmp0 uintptr
++}
+ 
+ func osyield() {
+ 	return
+@@ -116,6 +118,9 @@ const (
+ 	OFF = false
+ )
+ 
++// The entry of ethanol kernel
++func ethanol_trap()
++
+ func osinit() {
+ 	ncpu = 1
+ 	getg().m.procid = 2
+@@ -130,9 +135,11 @@ func osinit() {
+ 	argc = ethanol.GetArgc()
+ 	print("argc: ", argc, "\n")
+ 
++	ethanol.SetSscratch(uintptr(0))
+ 	ethanol.TimerInterrupt(ON)
+ 	ethanol.Interrupt(ON)
+ 	ethanol.SetTimer()
++	ethanol.SetStvec(ethanol_trap)
+ }
+ 
+ // wasm has no signals
+@@ -161,6 +168,15 @@ func initsig(preinit bool) {
+ //go:nowritebarrier
+ func newosproc(mp *m) {
+ 	for {
++		var i, j int
++		i = 16
++		j = 10000000
++		for i > 0 {
++			print("i = ", i, "\n")
++			for k := j*i + j; k > 0; k -= 1 {
++			}
++			i -= 1
++		}
+ 	}
+ 	panic("newosproc: not implemented")
+ }
+diff --git a/src/runtime/sys_opensbi_riscv64.s b/src/runtime/sys_opensbi_riscv64.s
+index ddf3897ffe..e22dafc406 100644
+--- a/src/runtime/sys_opensbi_riscv64.s
++++ b/src/runtime/sys_opensbi_riscv64.s
+@@ -1,5 +1,6 @@
+ #include "textflag.h"
+ #include "go_asm.h"
++#include "ethanol/csr.h"
+ 
+ // func write2(p uintptr)
+ TEXT runtime·write2(SB),NOSPLIT|NOFRAME,$0-8
+@@ -9,3 +10,102 @@ TEXT runtime·write2(SB),NOSPLIT|NOFRAME,$0-8
+         MOV	$0, A6
+         ECALL
+         RET
++
++// func ethanol_trap()
++TEXT runtime·ethanol_trap(SB),NOSPLIT|TOPFRAME,$0
++	CSRRW	CSR_SSCRATCH, g, g
++	BNE	g, ZERO, from_user
++from_kernel:
++	CSRRS	CSR_SSCRATCH, ZERO, g
++	MOV	(g_m)(g), g
++from_user:
++	MOV	T0, (m_mOS+mOS_tmp0)(g)
++	MOV	(m_gsignal)(g), T0
++	MOV	(g_stack+stack_hi)(T0), T0
++
++	ADDI	$-288, T0, T0
++	MOV	SP, 8(T0)
++	MOV	T0, SP
++	CSRRW	CSR_SSCRATCH, ZERO, g
++	MOV	g, 208(SP)
++	MOV	(g_m)(g), T0
++	MOV	(m_mOS+mOS_tmp0)(T0), T0
++
++	MOV	RA, 0x00(SP)
++	// skip the SP
++	MOV	GP, 0x10(SP)
++	MOV	TP, 0x18(SP)
++	MOV	T0, 0x20(SP)
++	//ADDI	$1, ZERO, T1
++	//SLL	$63, T1, T1
++	MOV	T1, 0x28(SP)
++	MOV	T2, 0x30(SP)
++	MOV	S0, 0x38(SP)
++	MOV	S1, 0x40(SP)
++	MOV	A0, 0x48(SP)
++	MOV	A1, 0x50(SP)
++	MOV	A2, 0x58(SP)
++	MOV	A3, 0x60(SP)
++	MOV	A4, 0x68(SP)
++	MOV	A5, 0x70(SP)
++	MOV	A6, 0x78(SP)
++	MOV	A7, 0x80(SP)
++	MOV	S2, 0x88(SP)
++	MOV	S3, 0x90(SP)
++	MOV	S4, 0x98(SP)
++	MOV	S5, 0xA0(SP)
++	MOV	S6, 0xA8(SP)
++	MOV	S7, 0xB0(SP)
++	MOV	S8, 0xB8(SP)
++	MOV	S9, 0xC0(SP)
++	MOV	S10, 0xC8(SP)
++	// skip the g
++	MOV	T3, 0xD8(SP)
++	MOV	T4, 0xE0(SP)
++	MOV	T5, 0xE8(SP)
++	MOV	T6, 0xF0(SP)
++	MOV	T6, 0xF0(SP)
++	CSRRW	CSR_SCAUSE, ZERO, T6
++	MOV	T6, 0xFF(SP)
++	CSRRW	CSR_SEPC, ZERO, T6
++	MOV	T6, 0x100(SP)
++	CSRRW	CSR_STVAL, ZERO, T6
++	MOV	T6, 0x108(SP)
++
++	// TODO: setup g for the handling
++	CALL	runtime∕ethanol·SetTimer(SB)
++	// TODO: reset sscratch for user space
++	MOV	0x100(SP), T6
++	CSRRW	CSR_SEPC, T6, ZERO
++	MOV	0x00(SP), RA
++	MOV	0x10(SP), GP
++	MOV	0x18(SP), TP
++	MOV	0x20(SP), T0
++	MOV	0x28(SP), T1
++	MOV	0x30(SP), T2
++	MOV	0x38(SP), S0
++	MOV	0x40(SP), S1
++	MOV	0x48(SP), A0
++	MOV	0x50(SP), A1
++	MOV	0x58(SP), A2
++	MOV	0x60(SP), A3
++	MOV	0x68(SP), A4
++	MOV	0x70(SP), A5
++	MOV	0x78(SP), A6
++	MOV	0x80(SP), A7
++	MOV	0x88(SP), S2
++	MOV	0x90(SP), S3
++	MOV	0x98(SP), S4
++	MOV	0xA0(SP), S5
++	MOV	0xA8(SP), S6
++	MOV	0xB0(SP), S7
++	MOV	0xB8(SP), S8
++	MOV	0xC0(SP), S9
++	MOV	0xC8(SP), S10
++	MOV	0xD0(SP), g
++	MOV	0xD8(SP), T3
++	MOV	0xE0(SP), T4
++	MOV	0xE8(SP), T5
++	MOV	0xF0(SP), T6
++	MOV	0x08(SP), SP
++	SRET
+-- 
+2.32.0
+
