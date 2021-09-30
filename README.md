@@ -1,6 +1,8 @@
-# Hoddarla 專案：鐵人賽第二十一天
+# Hoddarla 專案：鐵人賽第二十二天
 
 ## 實驗步驟
+
+> 今天進入新章，所以更新了 `GOBASE` 的基底。功能上沒有改動。
 
 執行之後，一直刷出 `i = n` 的訊息，且間有時間差距。
 之後可以使用 `Ctrl+A` `X` 中止 QEMU。（可以調整 QEMU 參數控制不同的記憶體大小）
@@ -13,7 +15,7 @@
 ```
 # in Hoddarla directory
 git pull origin ithome
-make stamps/go-env    # 今天需要重編工具鏈
+make stamps/go-env    # 今天需要重定基底，所以重編工具鏈
 make clean && make
 ```
 
