@@ -1,0 +1,362 @@
+From 89d09321214df156212a9b3df83ac28eb27fe281 Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Wed, 15 Sep 2021 06:44:44 +0800
+Subject: [PATCH 17/17] 4.1 Implement basic scheduling and context switch
+
+---
+ src/runtime/mem_opensbi.go        |   3 -
+ src/runtime/os_opensbi.go         | 118 ++++++++++++++++++++++++-----
+ src/runtime/proc.go               |   2 +
+ src/runtime/sys_opensbi_riscv64.s | 122 +++++++++++++++++++++++++++---
+ 4 files changed, 213 insertions(+), 32 deletions(-)
+
+diff --git a/src/runtime/mem_opensbi.go b/src/runtime/mem_opensbi.go
+index 7899991aea..5943009f2b 100644
+--- a/src/runtime/mem_opensbi.go
++++ b/src/runtime/mem_opensbi.go
+@@ -44,7 +44,6 @@ func baseInit() {
+ // which prevents us from allocating more stack.
+ //go:nosplit
+ func sysAlloc(n uintptr, sysStat *sysMemStat) unsafe.Pointer {
+-	print("Alloc: ", unsafe.Pointer(n), " bytes \n")
+ 	p := sysReserve(nil, n)
+ 	sysMap(p, n, sysStat)
+ 	return p
+@@ -86,7 +85,6 @@ func sysReserve(v unsafe.Pointer, n uintptr) unsafe.Pointer {
+ 	}
+ 	ret := base2PowVA[j-1]
+ 	base2PowVA[j-1] += uintptr(i << 12)
+-	print("Reserve: ", unsafe.Pointer(n), " bytes, at ", v, " but at ", unsafe.Pointer(ret), "\n")
+ 	return unsafe.Pointer(ret)
+ }
+ 
+@@ -113,7 +111,6 @@ func updatePageBase(index int) {
+ func sysMap(v unsafe.Pointer, n uintptr, sysStat *sysMemStat) {
+ 	ptr := uintptr(v)
+ 	sysStat.add(int64(n))
+-	print("Map: ", unsafe.Pointer(n), " bytes, at ", unsafe.Pointer(v), "\n")
+ 	i := uintptr(1)
+ 	for i < n {
+ 		i = i << 1
+diff --git a/src/runtime/os_opensbi.go b/src/runtime/os_opensbi.go
+index 3ade0a687f..688c79613e 100644
+--- a/src/runtime/os_opensbi.go
++++ b/src/runtime/os_opensbi.go
+@@ -45,7 +45,10 @@ func exitThread(wait *uint32) {
+ }
+ 
+ type mOS struct {
+-	tmp0 uintptr
++	tmp0     uintptr
++	mstarted bool
++	life     int
++	ctxt     rv64ctxt
+ }
+ 
+ func osyield() {
+@@ -140,6 +143,9 @@ func osinit() {
+ 	ethanol.Interrupt(ON)
+ 	ethanol.SetTimer()
+ 	ethanol.SetStvec(ethanol_trap)
++
++	m0.mstarted = true
++	m0.life = 3
+ }
+ 
+ // wasm has no signals
+@@ -167,18 +173,10 @@ func initsig(preinit bool) {
+ // May run with m.p==nil, so write barriers are not allowed.
+ //go:nowritebarrier
+ func newosproc(mp *m) {
+-	for {
+-		var i, j int
+-		i = 16
+-		j = 10000000
+-		for i > 0 {
+-			print("i = ", i, "\n")
+-			for k := j*i + j; k > 0; k -= 1 {
+-			}
+-			i -= 1
+-		}
+-	}
+-	panic("newosproc: not implemented")
++	// Do nothing.
++	// mp is already registered in allm, so we can switch to it
++	// later anyway.
++	mp.procid = uint64(uintptr(unsafe.Pointer(mp)))
+ }
+ 
+ func setProcessCPUProfiler(hz int32) {}
+@@ -210,10 +208,96 @@ func preemptM(mp *m) {
+ 	// No threads, so nothing to do.
+ }
+ 
+-func nanotime1() int64 {
+-	return 0
++func nanotime1() int64
++func walltime() (sec int64, nsec int32)
++
++func mswitch1(prev, next *m)
++func mswitch() {
++	_g_ := getg()
++	var next *m
++	for mp := allm; mp != nil; mp = mp.alllink {
++		if mp == _g_.m {
++			next = _g_.m.alllink
++			break
++		}
++	}
++	if next == nil {
++		next = allm
++	}
++
++	mswitch1(_g_.m, next)
++}
++
++type rv64ctxt struct {
++	ra      uint64
++	sp      uint64
++	gp      uint64
++	tp      uint64
++	t0      uint64
++	t1      uint64
++	t2      uint64
++	s0      uint64
++	s1      uint64
++	a0      uint64
++	a1      uint64
++	a2      uint64
++	a3      uint64
++	a4      uint64
++	a5      uint64
++	a6      uint64
++	a7      uint64
++	s2      uint64
++	s3      uint64
++	s4      uint64
++	s5      uint64
++	s6      uint64
++	s7      uint64
++	s8      uint64
++	s9      uint64
++	s10     uint64
++	g       uint64
++	t3      uint64
++	t4      uint64
++	t5      uint64
++	t6      uint64
++	scause  uint64
++	sepc    uint64
++	stval   uint64
++	fix1234 uint64
+ }
+ 
+-func walltime() (sec int64, nsec int32) {
+-	return
++const (
++	TIMER_INTERRUPT = 0x5
++)
++
++func ethanol_trap1(ctxt *rv64ctxt) {
++	_g_ := getg()
++
++	print("ethanol_trap1 ", _g_.m, "\n")
++	if (ctxt.scause|uint64(0x8000000000000000))>>63 != 0 {
++		// interrupt
++		ctxt.scause &= 0xF
++		switch ctxt.scause {
++		case TIMER_INTERRUPT:
++			ethanol.SetTimer()
++			_g_.m.life -= 1
++		default:
++			throw("cannot handle other traps now")
++		}
++	} else {
++		// exception
++		switch ctxt.scause {
++		default:
++			throw("unexpected exception")
++		}
++	}
++
++	if _g_.m.life == 0 {
++		_g_.m.life = 3
++		mswitch()
++	}
++
++	if ctxt.fix1234 != 1234 {
++		throw("stack broken")
++	}
+ }
+diff --git a/src/runtime/proc.go b/src/runtime/proc.go
+index 197441dfa7..ba625d0d0a 100644
+--- a/src/runtime/proc.go
++++ b/src/runtime/proc.go
+@@ -211,6 +211,8 @@ func main() {
+ 		}
+ 	}()
+ 
++	for GOOS == "opensbi" {
++	}
+ 	gcenable()
+ 
+ 	main_init_done = make(chan bool)
+diff --git a/src/runtime/sys_opensbi_riscv64.s b/src/runtime/sys_opensbi_riscv64.s
+index e22dafc406..19061cffbc 100644
+--- a/src/runtime/sys_opensbi_riscv64.s
++++ b/src/runtime/sys_opensbi_riscv64.s
+@@ -23,11 +23,11 @@ from_user:
+ 	MOV	(m_gsignal)(g), T0
+ 	MOV	(g_stack+stack_hi)(T0), T0
+ 
+-	ADDI	$-288, T0, T0
+-	MOV	SP, 8(T0)
++	ADDI	$-0x120, T0, T0
++	MOV	SP, 0x08(T0)
+ 	MOV	T0, SP
+ 	CSRRW	CSR_SSCRATCH, ZERO, g
+-	MOV	g, 208(SP)
++	MOV	g, 0xD0(SP)
+ 	MOV	(g_m)(g), T0
+ 	MOV	(m_mOS+mOS_tmp0)(T0), T0
+ 
+@@ -36,8 +36,6 @@ from_user:
+ 	MOV	GP, 0x10(SP)
+ 	MOV	TP, 0x18(SP)
+ 	MOV	T0, 0x20(SP)
+-	//ADDI	$1, ZERO, T1
+-	//SLL	$63, T1, T1
+ 	MOV	T1, 0x28(SP)
+ 	MOV	T2, 0x30(SP)
+ 	MOV	S0, 0x38(SP)
+@@ -64,16 +62,21 @@ from_user:
+ 	MOV	T4, 0xE0(SP)
+ 	MOV	T5, 0xE8(SP)
+ 	MOV	T6, 0xF0(SP)
+-	MOV	T6, 0xF0(SP)
+-	CSRRW	CSR_SCAUSE, ZERO, T6
+-	MOV	T6, 0xFF(SP)
+-	CSRRW	CSR_SEPC, ZERO, T6
++	CSRRS	CSR_SCAUSE, ZERO, T6
++	MOV	T6, 0xF8(SP)
++	CSRRS	CSR_SEPC, ZERO, T6
+ 	MOV	T6, 0x100(SP)
+-	CSRRW	CSR_STVAL, ZERO, T6
++	CSRRS	CSR_STVAL, ZERO, T6
+ 	MOV	T6, 0x108(SP)
++	MOV	$1234, T6
++	MOV	T6, 0x110(SP)
+ 
+-	// TODO: setup g for the handling
+-	CALL	runtime∕ethanol·SetTimer(SB)
++	MOV	(g_m)(g), g
++	MOV	(m_gsignal)(g), g
++	MOV	SP, -0x08(SP)
++	ADD	$-0x10, SP, SP
++	CALL	runtime·ethanol_trap1(SB)
++	ADD	$0x10, SP, SP
+ 	// TODO: reset sscratch for user space
+ 	MOV	0x100(SP), T6
+ 	CSRRW	CSR_SEPC, T6, ZERO
+@@ -109,3 +112,98 @@ from_user:
+ 	MOV	0xF0(SP), T6
+ 	MOV	0x08(SP), SP
+ 	SRET
++
++TEXT runtime·nanotime1(SB),NOSPLIT,$0
++        CSRRS   CSR_TIME, X0, T6
++        MOV     T6, ret+0(FP)
++        RET
++
++TEXT runtime·walltime(SB),NOSPLIT,$0
++        CSRRS   CSR_TIME, X0, T6
++        MOV     T6, ret+0(FP)
++        RET
++
++// func mswitch1(prev, next *m)
++TEXT runtime·mswitch1(SB),NOSPLIT|NOFRAME,$0-16
++	MOV	prev+0(FP), A0
++	MOV	next+8(FP), A1
++
++	MOV	RA, (m_mOS+mOS_ctxt+rv64ctxt_ra)(A0)
++	MOV	SP, (m_mOS+mOS_ctxt+rv64ctxt_sp)(A0)
++	MOV	GP, (m_mOS+mOS_ctxt+rv64ctxt_gp)(A0)
++	MOV	TP, (m_mOS+mOS_ctxt+rv64ctxt_tp)(A0)
++	MOV	T0, (m_mOS+mOS_ctxt+rv64ctxt_t0)(A0)
++	MOV	T1, (m_mOS+mOS_ctxt+rv64ctxt_t1)(A0)
++	MOV	T2, (m_mOS+mOS_ctxt+rv64ctxt_t2)(A0)
++	MOV	S0, (m_mOS+mOS_ctxt+rv64ctxt_s0)(A0)
++	MOV	S1, (m_mOS+mOS_ctxt+rv64ctxt_s1)(A0)
++	MOV	A0, (m_mOS+mOS_ctxt+rv64ctxt_a0)(A0)
++	MOV	A1, (m_mOS+mOS_ctxt+rv64ctxt_a1)(A0)
++	MOV	A2, (m_mOS+mOS_ctxt+rv64ctxt_a2)(A0)
++	MOV	A3, (m_mOS+mOS_ctxt+rv64ctxt_a3)(A0)
++	MOV	A4, (m_mOS+mOS_ctxt+rv64ctxt_a4)(A0)
++	MOV	A5, (m_mOS+mOS_ctxt+rv64ctxt_a5)(A0)
++	MOV	A6, (m_mOS+mOS_ctxt+rv64ctxt_a6)(A0)
++	MOV	A7, (m_mOS+mOS_ctxt+rv64ctxt_a7)(A0)
++	MOV	S2, (m_mOS+mOS_ctxt+rv64ctxt_s2)(A0)
++	MOV	S3, (m_mOS+mOS_ctxt+rv64ctxt_s3)(A0)
++	MOV	S4, (m_mOS+mOS_ctxt+rv64ctxt_s4)(A0)
++	MOV	S5, (m_mOS+mOS_ctxt+rv64ctxt_s5)(A0)
++	MOV	S6, (m_mOS+mOS_ctxt+rv64ctxt_s6)(A0)
++	MOV	S7, (m_mOS+mOS_ctxt+rv64ctxt_s7)(A0)
++	MOV	S8, (m_mOS+mOS_ctxt+rv64ctxt_s8)(A0)
++	MOV	S9, (m_mOS+mOS_ctxt+rv64ctxt_s9)(A0)
++	MOV	S10, (m_mOS+mOS_ctxt+rv64ctxt_s10)(A0)
++	MOV	g, (m_mOS+mOS_ctxt+rv64ctxt_g)(A0)
++	MOV	T3, (m_mOS+mOS_ctxt+rv64ctxt_t3)(A0)
++	MOV	T4, (m_mOS+mOS_ctxt+rv64ctxt_t4)(A0)
++	MOV	T5, (m_mOS+mOS_ctxt+rv64ctxt_t5)(A0)
++	MOV	T6, (m_mOS+mOS_ctxt+rv64ctxt_t6)(A0)
++
++	MOVB	(m_mOS+mOS_mstarted)(A1), A2
++	BEQ	A2, ZERO, new
++	JMP	restore
++new:
++	MOV	$1, A2
++	MOVB	A2, (m_mOS+mOS_mstarted)(A1)
++	MOV	$3, A2
++	MOVB	A2, (m_mOS+mOS_life)(A1)
++	MOV	(m_g0)(A1), g
++	MOV	(g_stack+stack_hi)(g), SP
++	MOV	$runtime·mstart(SB), A0
++	CSRRW	CSR_SEPC, A0, ZERO
++	SRET
++	// never return
++restore:
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_ra)(A1), RA
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_sp)(A1), SP
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_gp)(A1), GP
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_tp)(A1), TP
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_t0)(A1), T0
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_t1)(A1), T1
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_t2)(A1), T2
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_s0)(A1), S0
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_s1)(A1), S1
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_a0)(A1), A0
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_a2)(A1), A2
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_a3)(A1), A3
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_a4)(A1), A4
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_a5)(A1), A5
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_a6)(A1), A6
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_a7)(A1), A7
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_s2)(A1), S2
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_s3)(A1), S3
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_s4)(A1), S4
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_s5)(A1), S5
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_s6)(A1), S6
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_s7)(A1), S7
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_s8)(A1), S8
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_s9)(A1), S9
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_s10)(A1), S10
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_g)(A1), g
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_t3)(A1), T3
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_t4)(A1), T4
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_t5)(A1), T5
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_t6)(A1), T6
++	MOV	(m_mOS+mOS_ctxt+rv64ctxt_a1)(A1), A1
++	RET
+-- 
+2.32.0
+
