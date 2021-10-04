@@ -1,0 +1,27 @@
+From cc53857df7e6e30893c2d64d892340c13321378a Mon Sep 17 00:00:00 2001
+From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
+Date: Sun, 3 Oct 2021 14:47:21 +0800
+Subject: [PATCH 19/20] 5.1 Hello World
+
+---
+ src/os/file_opensbi.go | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/os/file_opensbi.go b/src/os/file_opensbi.go
+index 2c9a194ec1..f922590fc4 100644
+--- a/src/os/file_opensbi.go
++++ b/src/os/file_opensbi.go
+@@ -77,7 +77,9 @@ func (f *File) pread(b []byte, off int64) (n int, err error) {
+ }
+ 
+ func (f *File) write(b []byte) (n int, err error) {
+-	return 0, nil
++	print(string(b))
++	n = len(string(b))
++	return n, nil
+ }
+ 
+ func (f *File) pwrite(b []byte, off int64) (n int, err error) {
+-- 
+2.32.0
+
