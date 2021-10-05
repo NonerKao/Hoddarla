@@ -2,13 +2,12 @@
 run:
 	make -C ethanol
 	qemu-system-riscv64 \
-		-smp 4 \
 		-M virt \
 		-m 512M \
 		-nographic \
 		-bios misc/opensbi-0.9/build/platform/generic/firmware/fw_jump.bin \
 		-kernel ethanol/goto/goto.bin \
-		-append "ethanol arg1 arg2 env1=1 env2=abc" \
+		-append "ethanol arg1 arg2 GODEBUG=schedtrace=0,scheddetail=0 env2=abc" \
 		-device loader,file=ethanol/ethanol,addr=0x80201000,force-raw=on $(EXTRA_FLAGS)
 
 .PHONY: env run qemu clean allclean debug
