@@ -1,7 +1,7 @@
-From a130f14d47542f066e1855b797009f93b39f8325 Mon Sep 17 00:00:00 2001
+From e68fc3368f8b1a2d70b73ccce1fbe330f2ac7590 Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Sun, 8 Aug 2021 23:38:08 +0800
-Subject: [PATCH 11/17] 2.3 Parse DTB
+Subject: [PATCH 11/20] 2.3 Parse DTB
 
 ---
  src/runtime/ethanol/README                | 28 +++++++
@@ -11,7 +11,7 @@ Subject: [PATCH 11/17] 2.3 Parse DTB
  src/runtime/indirect_opensbi.go           |  6 +-
  src/runtime/os_opensbi.go                 |  8 +-
  src/runtime/rt0_opensbi_riscv64.s         | 52 +++++++++++--
- 8 files changed, 197 insertions(+), 11 deletions(-)
+ 7 files changed, 174 insertions(+), 11 deletions(-)
  create mode 100644 src/runtime/ethanol/README
  rename src/runtime/{opensbi => ethanol}/csr.h (100%)
  create mode 100644 src/runtime/ethanol/fdt.go

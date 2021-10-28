@@ -1,7 +1,7 @@
-From 877201ee38d5d9a0f9b991bff69554c4bed4d88c Mon Sep 17 00:00:00 2001
+From bcff9a84469deba817e544202d1a50f58e83fd8d Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Wed, 21 Jul 2021 23:04:06 +0800
-Subject: [PATCH 03/16] 0.3 Verify ethanol image
+Subject: [PATCH 03/20] 0.3 Verify ethanol image
 
 ---
  src/runtime/rt0_opensbi_riscv64.s | 4 ++++

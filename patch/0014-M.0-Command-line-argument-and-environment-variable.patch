@@ -1,7 +1,7 @@
-From ad08bc7806250b9badbb8f5341ee9a43e1380a30 Mon Sep 17 00:00:00 2001
+From d5b3febcc49c6892e50bab723df484f3b9670062 Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Sun, 22 Aug 2021 22:40:06 +0800
-Subject: [PATCH 14/14] M.0 Command-line argument and environment variable
+Subject: [PATCH 14/20] M.0 Command-line argument and environment variable
 
 ---
  src/runtime/ethanol/README        |  1 +

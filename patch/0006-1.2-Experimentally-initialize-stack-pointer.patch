@@ -1,7 +1,7 @@
-From 37f63e6edbf1285332cd6ef699995d946265bcfe Mon Sep 17 00:00:00 2001
+From bb9478e0384dd5981c508711a778e26eb6a6929b Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Wed, 21 Jul 2021 23:04:06 +0800
-Subject: [PATCH 06/17] 1.2 Experimentally initialize stack pointer
+Subject: [PATCH 06/20] 1.2 Experimentally initialize stack pointer
 
 ---
  src/runtime/rt0_opensbi_riscv64.s | 3 +--

@@ -1,7 +1,7 @@
-From cf58f51120daeac1ff1bdb30c0c725b97ad41098 Mon Sep 17 00:00:00 2001
+From 541ff80fc984b3b357a54b652647dfb25fcfb103 Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Wed, 21 Jul 2021 23:04:06 +0800
-Subject: [PATCH 02/16] 0.2 Executable
+Subject: [PATCH 02/20] 0.2 Executable
 
 ---
  src/cmd/link/internal/ld/asmb.go     |   1 +
@@ -81,10 +81,10 @@ index 72639962e2..9f35b2a38c 100644
  
  	case objabi.Hlinux,
 diff --git a/src/cmd/link/internal/riscv64/obj.go b/src/cmd/link/internal/riscv64/obj.go
-index 917324d922..2bd68d0051 100644
+index 557e8932c9..6a47a81ccf 100644
 --- a/src/cmd/link/internal/riscv64/obj.go
 +++ b/src/cmd/link/internal/riscv64/obj.go
-@@ -45,7 +45,7 @@ func Init() (*sys.Arch, ld.Arch) {
+@@ -53,7 +53,7 @@ func Init() (*sys.Arch, ld.Arch) {
  
  func archinit(ctxt *ld.Link) {
  	switch ctxt.HeadType {

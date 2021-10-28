@@ -1,7 +1,7 @@
-From 0073bd1ab37f123c7bcd9255625a1abf89257ed1 Mon Sep 17 00:00:00 2001
+From 7b93438f2f005d2af31f4dd35c1fce17f0517d5e Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Sun, 29 Aug 2021 21:31:44 +0800
-Subject: [PATCH 15/15] 3.0 Implement basic timer interrupt
+Subject: [PATCH 15/20] 3.0 Implement basic timer interrupt
 
 ---
  src/cmd/internal/obj/riscv/obj.go |  4 +++-
@@ -16,10 +16,10 @@ Subject: [PATCH 15/15] 3.0 Implement basic timer interrupt
  create mode 100644 src/runtime/ethanol/trap.s
 
 diff --git a/src/cmd/internal/obj/riscv/obj.go b/src/cmd/internal/obj/riscv/obj.go
-index 9493e560ae..6429c2df8e 100644
+index d8a0e489b5..15abe13277 100644
 --- a/src/cmd/internal/obj/riscv/obj.go
 +++ b/src/cmd/internal/obj/riscv/obj.go
-@@ -1479,8 +1479,10 @@ var encodings = [ALAST & obj.AMask]encoding{
+@@ -1506,8 +1506,10 @@ var encodings = [ALAST & obj.AMask]encoding{
  	AECALL & obj.AMask:     iIEncoding,
  	AEBREAK & obj.AMask:    iIEncoding,
  	AWFI & obj.AMask:       iIEncoding,
@@ -30,7 +30,7 @@ index 9493e560ae..6429c2df8e 100644
  	ASFENCEVMA & obj.AMask: iIEncoding,
  
  	// Escape hatch
-@@ -1928,7 +1930,7 @@ func instructionsForProg(p *obj.Prog) []*instruction {
+@@ -1956,7 +1958,7 @@ func instructionsForProg(p *obj.Prog) []*instruction {
  		ins.funct7 = 2
  		ins.rd, ins.rs1, ins.rs2 = uint32(p.RegTo2), uint32(p.To.Reg), uint32(p.From.Reg)
  

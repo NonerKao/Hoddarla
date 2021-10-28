@@ -1,24 +1,22 @@
-From 6bfc93ba5b726935927b86aa3ebc1ff4906da052 Mon Sep 17 00:00:00 2001
+From 2974d199d5eddc187b015fd5a14b56f530b94d2f Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Sun, 15 Aug 2021 12:03:43 +0800
-Subject: [PATCH 12/17] 2.4 Implement sysAlloc, sysReserve and sysMap
+Subject: [PATCH 12/20] 2.4 Implement sysAlloc, sysReserve and sysMap
 
 ---
  src/runtime/ethanol/README        |  34 ++++++---
  src/runtime/ethanol/config.h      |  11 +++
  src/runtime/ethanol/early_mm.go   |  74 +++++++++++++++++++
  src/runtime/ethanol/fdt.go        |   4 +-
- src/runtime/ethanol/fdt.s         |  23 ------
  src/runtime/ethanol/misc.s        |  13 ++++
  src/runtime/ethanol/pivot.go      |   7 --
  src/runtime/indirect_opensbi.go   |  13 ----
  src/runtime/mem_opensbi.go        |  93 +++++++++++++++++++++++-
  src/runtime/os_opensbi.go         |   8 +-
  src/runtime/rt0_opensbi_riscv64.s | 117 ++++++++++++++++++++++--------
- 11 files changed, 310 insertions(+), 88 deletions(-)
+ 10 files changed, 309 insertions(+), 65 deletions(-)
  create mode 100644 src/runtime/ethanol/config.h
  create mode 100644 src/runtime/ethanol/early_mm.go
- delete mode 100644 src/runtime/ethanol/fdt.s
  create mode 100644 src/runtime/ethanol/misc.s
  delete mode 100644 src/runtime/ethanol/pivot.go
  delete mode 100644 src/runtime/indirect_opensbi.go
@@ -195,7 +193,7 @@ index 7030fa034f..ed0888d470 100644
  	// find "reg" directly
 diff --git a/src/runtime/ethanol/misc.s b/src/runtime/ethanol/misc.s
 new file mode 100644
-index 0000000000..64a549d023
+index 0000000000..c9025b4777
 --- /dev/null
 +++ b/src/runtime/ethanol/misc.s
 @@ -0,0 +1,13 @@
@@ -387,7 +385,7 @@ index 128fd8b570..827ab84c0c 100644
  
  // wasm has no signals
 diff --git a/src/runtime/rt0_opensbi_riscv64.s b/src/runtime/rt0_opensbi_riscv64.s
-index 84eff96a16..cbe80ab404 100644
+index 84eff96a16..a870fdeef0 100644
 --- a/src/runtime/rt0_opensbi_riscv64.s
 +++ b/src/runtime/rt0_opensbi_riscv64.s
 @@ -4,11 +4,12 @@
@@ -504,21 +502,21 @@ index 84eff96a16..cbe80ab404 100644
 +	CALL	map_kernel(SB)
 +	// Setup page table mapping
 +	CALL	map_page_table(SB)
-+
+ 
+-	// setup SP in VA
+-	MOV     $0x80202000, X2
+-	ADD	X2, A1, X2
 +	SFENCEVMA
 +	MOV	$0x80000000, T0
 +	SLL	$32, T0, T0
 +	ADD	$0x80100, T0, T0
 +	CSRRW	CSR_SATP, T0, ZERO
  
--	// setup SP in VA
--	MOV     $0x80202000, X2
--	ADD	X2, A1, X2
+-	// setup page table
 +	// never reach here
 +	NOP
 +	EBREAK
- 
--	// setup page table
++
 +TEXT map_kernel(SB),NOSPLIT|NOFRAME,$0
 +	// 0xffffffc0_00000000 to 0x80200000
 +	//         7F_C
@@ -583,5 +581,6 @@ index 84eff96a16..cbe80ab404 100644
  
  	// General Golang entry
  	MOV	$runtime·rt0_go(SB), T0
---
+-- 
 2.32.0
+

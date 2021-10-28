@@ -1,7 +1,7 @@
-From cc1f84dfcbc7f6e167efa1580c9e2d455dd359c6 Mon Sep 17 00:00:00 2001
+From 35c27f8cd0b7698780eb558f24982a2b01eec3da Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Wed, 18 Aug 2021 23:26:14 +0800
-Subject: [PATCH 13/17] 2.5 Arch-depedent memory constant
+Subject: [PATCH 13/20] 2.5 Arch-depedent memory constant
 
 ---
  src/runtime/ethanol/early_mm.go | 2 +-
@@ -23,7 +23,7 @@ index 092383e661..55f9c059db 100644
  			}
  			return
 diff --git a/src/runtime/malloc.go b/src/runtime/malloc.go
-index f8d5d48a28..347f767c50 100644
+index c389cb1e45..93e53121cb 100644
 --- a/src/runtime/malloc.go
 +++ b/src/runtime/malloc.go
 @@ -209,7 +209,7 @@ const (

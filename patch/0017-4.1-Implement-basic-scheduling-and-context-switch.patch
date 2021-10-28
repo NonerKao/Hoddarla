@@ -1,7 +1,7 @@
-From 89d09321214df156212a9b3df83ac28eb27fe281 Mon Sep 17 00:00:00 2001
+From 8fa0c4aa90fa141cc22432baec614f95027a3792 Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Wed, 15 Sep 2021 06:44:44 +0800
-Subject: [PATCH 17/17] 4.1 Implement basic scheduling and context switch
+Subject: [PATCH 17/20] 4.1 Implement basic scheduling and context switch
 
 ---
  src/runtime/mem_opensbi.go        |   3 -
@@ -189,7 +189,7 @@ index 3ade0a687f..688c79613e 100644
 +	}
  }
 diff --git a/src/runtime/proc.go b/src/runtime/proc.go
-index 197441dfa7..ba625d0d0a 100644
+index 990637e21a..2014ccd462 100644
 --- a/src/runtime/proc.go
 +++ b/src/runtime/proc.go
 @@ -211,6 +211,8 @@ func main() {

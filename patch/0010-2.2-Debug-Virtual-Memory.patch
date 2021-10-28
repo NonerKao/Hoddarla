@@ -1,7 +1,7 @@
-From 2351521ab994e95cd783d3d7ede768c69fed6222 Mon Sep 17 00:00:00 2001
+From 6c0ad740ee3cf2bcf54308bf71720c33db578ef0 Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Sat, 7 Aug 2021 22:53:40 +0800
-Subject: [PATCH 10/17] 2.2 Debug Virtual Memory
+Subject: [PATCH 10/20] 2.2 Debug Virtual Memory
 
 ---
  src/runtime/os_opensbi.go         |  8 +++++++-

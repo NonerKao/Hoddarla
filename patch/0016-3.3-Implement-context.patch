@@ -1,15 +1,15 @@
-From 885196514d14614db47407ec3971f78f8129b0b8 Mon Sep 17 00:00:00 2001
+From 93353a25e2184f541c87fe78131b35124776221c Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Fri, 10 Sep 2021 06:22:23 +0800
-Subject: [PATCH 16/17] 3.3 Implement context
+Subject: [PATCH 16/20] 3.3 Implement context
 
 ---
  src/runtime/ethanol/csr.h         |   1 +
- src/runtime/ethanol/trap.go       |   2 ++
+ src/runtime/ethanol/trap.go       |   2 +
  src/runtime/ethanol/trap.s        |  13 ++++
  src/runtime/os_opensbi.go         |  18 +++++-
  src/runtime/sys_opensbi_riscv64.s | 100 ++++++++++++++++++++++++++++++
- 5 files changed, 136 insertions(+), 1 deletion(-)
+ 5 files changed, 133 insertions(+), 1 deletion(-)
 
 diff --git a/src/runtime/ethanol/csr.h b/src/runtime/ethanol/csr.h
 index 65d512d946..cf17f69f7c 100644
@@ -24,12 +24,10 @@ index 65d512d946..cf17f69f7c 100644
  #define CSR_SCAUSE	$0x142
  #define CSR_STVAL	$0x143
 diff --git a/src/runtime/ethanol/trap.go b/src/runtime/ethanol/trap.go
-index 663c225dc2..6a97a430e9 100644
+index 60f18053aa..6a97a430e9 100644
 --- a/src/runtime/ethanol/trap.go
 +++ b/src/runtime/ethanol/trap.go
-@@ -1,8 +1,10 @@
- //go:build opensbi
- // +build opensbi
+@@ -3,6 +3,8 @@
  
  package ethanol
  
@@ -39,7 +37,7 @@ index 663c225dc2..6a97a430e9 100644
  func SetTimer()
 +func SetStvec(f func())
 diff --git a/src/runtime/ethanol/trap.s b/src/runtime/ethanol/trap.s
-index 96659d4068..ebe35e7174 100644
+index dabbe9bc65..32c0187c51 100644
 --- a/src/runtime/ethanol/trap.s
 +++ b/src/runtime/ethanol/trap.s
 @@ -38,3 +38,16 @@ TEXT runtime∕ethanol·SetTimer(SB), NOSPLIT|NOFRAME, $0-0

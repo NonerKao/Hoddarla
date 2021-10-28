@@ -1,7 +1,7 @@
-From 96cbcfc064863036ebd68699e776b1f343747e74 Mon Sep 17 00:00:00 2001
+From bea644b681b71cbb93b6b3d69c0c4c0df239fed1 Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Sat, 7 Aug 2021 21:22:22 +0800
-Subject: [PATCH 09/17] 2.1 Start RISC-V MMU
+Subject: [PATCH 09/20] 2.1 Start RISC-V MMU
 
 ---
  src/cmd/internal/obj/riscv/obj.go | 13 ++++-----
@@ -13,10 +13,10 @@ Subject: [PATCH 09/17] 2.1 Start RISC-V MMU
  create mode 100644 src/runtime/opensbi/pivot.go
 
 diff --git a/src/cmd/internal/obj/riscv/obj.go b/src/cmd/internal/obj/riscv/obj.go
-index f56aa4e244..42ac5b9674 100644
+index 9a0eb61f8e..d8a0e489b5 100644
 --- a/src/cmd/internal/obj/riscv/obj.go
 +++ b/src/cmd/internal/obj/riscv/obj.go
-@@ -1472,11 +1472,12 @@ var encodings = [ALAST & obj.AMask]encoding{
+@@ -1503,11 +1503,12 @@ var encodings = [ALAST & obj.AMask]encoding{
  	// Privileged ISA
  
  	// 3.2.1: Environment Call and Breakpoint
@@ -34,7 +34,7 @@ index f56aa4e244..42ac5b9674 100644
  
  	// Escape hatch
  	AWORD & obj.AMask: rawEncoding,
-@@ -1923,7 +1924,7 @@ func instructionsForProg(p *obj.Prog) []*instruction {
+@@ -1955,7 +1956,7 @@ func instructionsForProg(p *obj.Prog) []*instruction {
  		ins.funct7 = 2
  		ins.rd, ins.rs1, ins.rs2 = uint32(p.RegTo2), uint32(p.To.Reg), uint32(p.From.Reg)
  

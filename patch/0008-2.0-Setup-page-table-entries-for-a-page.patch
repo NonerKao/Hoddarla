@@ -1,7 +1,7 @@
-From c726394b891efbeb44ab44b8aa14224b258f1414 Mon Sep 17 00:00:00 2001
+From ae3735b6e1bb6f98a6ee4e319e150642d4afe504 Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Mon, 26 Jul 2021 23:05:46 +0800
-Subject: [PATCH 08/17] 2.0 Setup page table entries for a page
+Subject: [PATCH 08/20] 2.0 Setup page table entries for a page
 
 ---
  src/runtime/opensbi/csr.h         |  1 +

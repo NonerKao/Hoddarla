@@ -1,7 +1,7 @@
-From b47bd1b8cbd027a3e6275394897315cfc00132e1 Mon Sep 17 00:00:00 2001
+From cff0a76ccff1b384037b44506616a3d355b33e9f Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Sun, 19 Sep 2021 14:55:43 +0800
-Subject: [PATCH 18/19] 4.2 Implement semaphore
+Subject: [PATCH 18/20] 4.2 Implement semaphore
 
 ---
  src/runtime/defs_opensbi_riscv64.go |  14 +++
@@ -36,7 +36,7 @@ index 0000000000..7fbd6f71fe
 +	ts.tv_nsec = ns % 1e9
 +}
 diff --git a/src/runtime/ethanol/trap.s b/src/runtime/ethanol/trap.s
-index ebe35e7174..5ecf3328f2 100644
+index 32c0187c51..02e09eadb5 100644
 --- a/src/runtime/ethanol/trap.s
 +++ b/src/runtime/ethanol/trap.s
 @@ -33,7 +33,7 @@ clear:
@@ -352,7 +352,7 @@ index 688c79613e..02d26d997c 100644
  		ctxt.scause &= 0xF
  		switch ctxt.scause {
 diff --git a/src/runtime/proc.go b/src/runtime/proc.go
-index f5d97ee47e..605e133000 100644
+index 2014ccd462..990637e21a 100644
 --- a/src/runtime/proc.go
 +++ b/src/runtime/proc.go
 @@ -211,8 +211,6 @@ func main() {

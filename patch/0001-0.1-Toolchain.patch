@@ -1,12 +1,12 @@
-From a1e2721a45058d39b769c217b215a4cb38022d68 Mon Sep 17 00:00:00 2001
+From 8cf07478e9af15a71c6d3988dfea78c5af0d1b03 Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Tue, 17 Aug 2021 21:28:37 +0800
-Subject: [PATCH 01/16] 0.1 Toolchain
+Subject: [PATCH 01/20] 0.1 Toolchain
 
 ---
  src/cmd/dist/build.go                |  2 ++
  src/cmd/internal/objabi/head.go      |  5 +++++
- src/go/build/syslist.go              |  2 +-
+ src/go/build/syslist.go              |  4 ++--
  src/internal/goos/zgoos_aix.go       |  1 +
  src/internal/goos/zgoos_android.go   |  1 +
  src/internal/goos/zgoos_darwin.go    |  1 +
@@ -24,14 +24,14 @@ Subject: [PATCH 01/16] 0.1 Toolchain
  src/internal/goos/zgoos_solaris.go   |  1 +
  src/internal/goos/zgoos_windows.go   |  1 +
  src/internal/goos/zgoos_zos.go       |  1 +
- 20 files changed, 51 insertions(+), 1 deletion(-)
+ 20 files changed, 52 insertions(+), 2 deletions(-)
  create mode 100644 src/internal/goos/zgoos_opensbi.go
 
 diff --git a/src/cmd/dist/build.go b/src/cmd/dist/build.go
-index 33a329e48b..ca08e474d3 100644
+index 39f016e315..991cc95043 100644
 --- a/src/cmd/dist/build.go
 +++ b/src/cmd/dist/build.go
-@@ -89,6 +89,7 @@ var okgoos = []string{
+@@ -90,6 +90,7 @@ var okgoos = []string{
  	"nacl", // keep;
  	"netbsd",
  	"openbsd",
@@ -39,7 +39,7 @@ index 33a329e48b..ca08e474d3 100644
  	"plan9",
  	"windows",
  	"aix",
-@@ -1591,6 +1592,7 @@ var cgoEnabled = map[string]bool{
+@@ -1602,6 +1603,7 @@ var cgoEnabled = map[string]bool{
  	"openbsd/arm":     true,
  	"openbsd/arm64":   true,
  	"openbsd/mips64":  true,
@@ -78,7 +78,7 @@ index 48ff292307..1b7b3d78c7 100644
  		return "plan9"
  	case Hsolaris:
 diff --git a/src/go/build/syslist.go b/src/go/build/syslist.go
-index 60ac5511bd..b10b20cdc4 100644
+index 0f6e336925..b10b20cdc4 100644
 --- a/src/go/build/syslist.go
 +++ b/src/go/build/syslist.go
 @@ -7,5 +7,5 @@ package build
@@ -86,8 +86,9 @@ index 60ac5511bd..b10b20cdc4 100644
  // Do not remove from this list, as these are used for go/build filename matching.
  
 -const goosList = "aix android darwin dragonfly freebsd hurd illumos ios js linux nacl netbsd openbsd plan9 solaris windows zos "
+-const goarchList = "386 amd64 amd64p32 arm armbe arm64 arm64be loong64 mips mipsle mips64 mips64le mips64p32 mips64p32le ppc ppc64 ppc64le riscv riscv64 s390 s390x sparc sparc64 wasm "
 +const goosList = "aix android darwin dragonfly freebsd hurd illumos ios js linux nacl netbsd openbsd opensbi plan9 solaris windows zos "
- const goarchList = "386 amd64 amd64p32 arm armbe arm64 arm64be ppc64 ppc64le loong64 mips mipsle mips64 mips64le mips64p32 mips64p32le ppc riscv riscv64 s390 s390x sparc sparc64 wasm "
++const goarchList = "386 amd64 amd64p32 arm armbe arm64 arm64be ppc64 ppc64le loong64 mips mipsle mips64 mips64le mips64p32 mips64p32le ppc riscv riscv64 s390 s390x sparc sparc64 wasm "
 diff --git a/src/internal/goos/zgoos_aix.go b/src/internal/goos/zgoos_aix.go
 index 063e698b82..068483e3e2 100644
 --- a/src/internal/goos/zgoos_aix.go

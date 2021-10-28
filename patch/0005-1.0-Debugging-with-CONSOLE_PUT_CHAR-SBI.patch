@@ -1,7 +1,7 @@
-From e4e3d7df77ac6ff064dce55711c2015788a03e94 Mon Sep 17 00:00:00 2001
+From 23a9d3aceb039be1f9dad8d02da7a91b97d8a5a5 Mon Sep 17 00:00:00 2001
 From: "Alan (Quey-Liang) Kao" <alankao@andestech.com>
 Date: Wed, 21 Jul 2021 23:04:06 +0800
-Subject: [PATCH 05/17] 1.0 Debugging with CONSOLE_PUT_CHAR SBI
+Subject: [PATCH 05/20] 1.0 Debugging with CONSOLE_PUT_CHAR SBI
 
 ---
  src/cmd/internal/obj/riscv/obj.go |  1 +
@@ -10,10 +10,10 @@ Subject: [PATCH 05/17] 1.0 Debugging with CONSOLE_PUT_CHAR SBI
  3 files changed, 52 insertions(+), 1 deletion(-)
 
 diff --git a/src/cmd/internal/obj/riscv/obj.go b/src/cmd/internal/obj/riscv/obj.go
-index e108931d60..f56aa4e244 100644
+index 74d2a8c69a..9a0eb61f8e 100644
 --- a/src/cmd/internal/obj/riscv/obj.go
 +++ b/src/cmd/internal/obj/riscv/obj.go
-@@ -1476,6 +1476,7 @@ var encodings = [ALAST & obj.AMask]encoding{
+@@ -1507,6 +1507,7 @@ var encodings = [ALAST & obj.AMask]encoding{
  	AEBREAK & obj.AMask: iIEncoding,
  	AWFI & obj.AMask:    iIEncoding,
  	ACSRRW & obj.AMask:  iIEncoding,
